@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: retail-sarathi-db
+    environment:
+      POSTGRES_USER: retailsarathi
+      POSTGRES_PASSWORD: retailsarathi
+      POSTGRES_DB: retailsarathi
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: retail-sarathi-redis
+    ports:
+      - "6379:6379"
+
+volumes:
+  pgdata:

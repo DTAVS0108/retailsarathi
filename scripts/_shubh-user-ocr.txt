@@ -1,0 +1,92 @@
+No
+SHUBH TRADERS 2026-27
+NEAR SARGAM THEATER
+CHANDPUR
+GSTIN/UIN: 09AHDPA3364M1ZA
+State Name: Uttar Pradesh, Code : 09
+Buyer (Bill to)
+M/s Tyagi Electric Works
+Gulabi Market, Silara Road, Chandpur, Bijnor
+09ASWPK4296J1ZR
+:ASWPK4296J
+GSTINIUIN
+PANIT No
+State Name
+Place of Supply : Uttar Pradesh
+85072000
+85044010
+: Uttar Pradesh, Code : 09
+Description of Goods
+|Amount Chargeable (in words)
+OUTPUT SGST 9 %
+Declaration
+TAX INVOICE(Page 2)
+Total
+|INR One Lakh Twenty Three Thousand Oniy
+HSN/SAC
+HSN/SAC
+GST
+Rate
+INVOICE No.
+358
+We decare that this INVOICE shows the actual price of the
+goods described and that all particulars are true and
+Correct.
+Delivery Note
+Reference No. & Date.
+Buyer's Order No.
+Dispatch Doc No.
+Dispatched through
+Bill of Lading/LR-RR No.
+Terms of Delivery
+Quantity
+18.00 Pcs.
+e-Way Bill No. Dated
+441730045950 27-May-26
+Taxable
+Value Rate Amount
+53813.55 9%
+50423.73 9%
+Total 104237.28
+Sale Price
+CGST
+(ORIGINAL FOR RECIPIENT)
+This is a Computer Generated INVOICE
+Mode/Terms of Payment
+Rate
+4843.22 9%
+4538.14 9%
+9381.36
+Other References
+Dated
+Delivery Note Date
+Destination
+Rate
+Motor Vehicle No.
+UP23AT5449
+per
+SGST/UTGST
+Amount
+4843.22
+4538.14
+9381.36|
+Armount
+9381.36
+123000.00
+Tax Amount (in words) : INREighteen Thousand Seven Hundred Sixty Two and Seventy Two paise Only
+E. & 0.E
+Total
+Tax Amount
+9686.44
+9076.28
+18762.72
+Company's Bank Details
+Bank Name
+: PUNJAB NATIONAL BANK CIC
+Alc No.
+: 0096008700031334
+Branch & IFS Code: CHANDPUR & PUNBOO09600
+for SHUBH TRADERS 2026-27
+For Shubh Traders
+Prop
+Authorised Signatory

@@ -1,0 +1,15 @@
+TAX INVOICE
+Digital Hub India
+GSTIN: 07AACCD1234F1Z8
+Invoice Number: DH/2026/331
+Invoice Date: 09/07/2026
+
+#  Particulars                               HSN     Qty   Rate    Disc%   Amount
+1  Apple iPhone 15 128GB Black               8517    1     69900   0       69900
+2  OnePlus Nord CE 3 Lite 8GB                8517    2     18999   5       36098.10
+3  Realme Buds Air 5                         8518    4     4299    0       17196
+4  Portronics Konnect G15 Type-C Cable       8544    15    199     0       2985
+
+Taxable Value: 126079.10
+IGST 18%: 22694.24
+Amount Payable: 148773.34

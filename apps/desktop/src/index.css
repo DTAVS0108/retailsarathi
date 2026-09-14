@@ -1,0 +1,602 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --rs-bg: #e6f2f0;
+  --rs-bg-deep: #d1e8e4;
+  --rs-surface: #ffffff;
+  --rs-surface-2: #f3faf8;
+  --rs-ink: #0f2f2c;
+  --rs-muted: #5b7a76;
+  --rs-accent: #0f766e;
+  --rs-accent-hover: #0d5f59;
+  --rs-accent-soft: #ccfbf1;
+  --rs-on-accent: #ffffff;
+  --rs-header: linear-gradient(135deg, #0f766e 0%, #115e59 55%, #134e4a 100%);
+  --rs-header-ink: #f0fdfa;
+  --rs-border: #c5ddd8;
+  --rs-success: #15803d;
+  --rs-warn: #b45309;
+  --rs-danger: #b91c1c;
+  --rs-shadow: 0 12px 40px rgba(15, 118, 110, 0.12);
+  --rs-radius: 14px;
+  --rs-font-display: 'Fraunces', Georgia, serif;
+  --rs-font-body: 'DM Sans', system-ui, sans-serif;
+  --rs-touch: 44px;
+  /* ~2px thinner than the default OS scrollbar track (~17px → 15px) */
+  --rs-scrollbar-size: 15px;
+  color-scheme: light;
+}
+
+/* App-wide thinner scrollbars (rail, panels, modals, lists) */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--rs-muted) 55%, var(--rs-border)) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: var(--rs-scrollbar-size);
+  height: var(--rs-scrollbar-size);
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--rs-muted) 45%, var(--rs-border));
+  border-radius: 999px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--rs-muted) 70%, var(--rs-ink));
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+html.rs-theme-dark,
+html.rs-theme-dark body {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--rs-bg);
+  color: var(--rs-ink);
+  font-family: var(--rs-font-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+.rs-app {
+  background:
+    radial-gradient(1200px 500px at 10% -10%, color-mix(in srgb, var(--rs-accent) 18%, transparent), transparent 60%),
+    radial-gradient(900px 400px at 100% 0%, color-mix(in srgb, var(--rs-accent) 10%, transparent), transparent 55%),
+    var(--rs-bg);
+  color: var(--rs-ink);
+  font-family: var(--rs-font-body);
+}
+
+.rs-display {
+  font-family: var(--rs-font-display);
+  letter-spacing: -0.02em;
+}
+
+.rs-header {
+  background: var(--rs-header);
+  color: var(--rs-header-ink);
+  box-shadow: var(--rs-shadow);
+}
+
+.rs-surface {
+  background: var(--rs-surface);
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius);
+  box-shadow: var(--rs-shadow);
+}
+
+.rs-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0 1rem;
+  background: var(--rs-accent);
+  color: var(--rs-on-accent);
+  border-radius: calc(var(--rs-radius) - 4px);
+  font-weight: 600;
+  min-height: var(--rs-touch);
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background 160ms ease, transform 120ms ease;
+}
+.rs-btn-primary:hover {
+  background: var(--rs-accent-hover);
+}
+.rs-btn-primary:active {
+  transform: scale(0.98);
+}
+
+.rs-btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0 0.85rem;
+  background: color-mix(in srgb, var(--rs-header-ink) 16%, transparent);
+  color: var(--rs-header-ink);
+  border-radius: calc(var(--rs-radius) - 4px);
+  font-weight: 600;
+  min-height: 36px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.rs-btn-ghost[data-active='true'] {
+  background: var(--rs-surface);
+  color: var(--rs-accent);
+}
+
+/* Ghost variant for page body (not header) — readable on light surfaces */
+.rs-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0 0.85rem;
+  background: var(--rs-surface);
+  color: var(--rs-ink);
+  border: 1px solid var(--rs-border);
+  border-radius: calc(var(--rs-radius) - 4px);
+  font-weight: 600;
+  min-height: var(--rs-touch);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.rs-btn-secondary:hover {
+  background: var(--rs-surface-2);
+}
+
+.rs-input {
+  width: 100%;
+  border: 1px solid var(--rs-border);
+  background: var(--rs-surface) !important;
+  color: var(--rs-ink) !important;
+  border-radius: calc(var(--rs-radius) - 6px);
+  padding: 0.55rem 0.75rem;
+  outline: none;
+  color-scheme: inherit;
+}
+.rs-input:focus {
+  border-color: var(--rs-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--rs-accent) 22%, transparent);
+}
+
+/* Native controls inherit theme (closed state). Prefer ThemedSelect for menus. */
+.rs-app input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']),
+.rs-app select,
+.rs-app textarea {
+  background-color: var(--rs-surface) !important;
+  color: var(--rs-ink) !important;
+  border: 1px solid var(--rs-border) !important;
+  border-radius: calc(var(--rs-radius) - 6px);
+  outline: none;
+  color-scheme: inherit;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.rs-app input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']):focus,
+.rs-app select:focus,
+.rs-app textarea:focus {
+  border-color: var(--rs-accent) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--rs-accent) 22%, transparent);
+}
+.rs-app select {
+  background-image: linear-gradient(45deg, transparent 50%, var(--rs-muted) 50%),
+    linear-gradient(135deg, var(--rs-muted) 50%, transparent 50%);
+  background-position:
+    calc(100% - 16px) calc(50% - 2px),
+    calc(100% - 11px) calc(50% - 2px);
+  background-size:
+    5px 5px,
+    5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 1.75rem;
+}
+.rs-app select option,
+.rs-app select optgroup {
+  background-color: var(--rs-surface);
+  color: var(--rs-ink);
+}
+.rs-app ::placeholder {
+  color: var(--rs-muted);
+  opacity: 0.85;
+}
+
+/* Custom dropdown — always theme-correct (fixes Electron white-on-white) */
+.rs-select {
+  position: relative;
+  min-width: 0;
+}
+.rs-select-trigger {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  border: 1px solid var(--rs-border);
+  background: var(--rs-surface);
+  color: var(--rs-ink);
+  border-radius: calc(var(--rs-radius) - 6px);
+  padding: 0.55rem 0.75rem;
+  text-align: left;
+  font-size: inherit;
+  line-height: 1.25;
+  cursor: pointer;
+  min-height: 2.5rem;
+}
+.rs-select-trigger:hover {
+  border-color: color-mix(in srgb, var(--rs-accent) 45%, var(--rs-border));
+}
+.rs-select-trigger:focus {
+  outline: none;
+  border-color: var(--rs-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--rs-accent) 22%, transparent);
+}
+.rs-select-trigger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.rs-select-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rs-select-caret {
+  flex-shrink: 0;
+  color: var(--rs-muted);
+  font-size: 0.75rem;
+}
+.rs-select-menu {
+  margin: 0;
+  padding: 0.35rem;
+  list-style: none;
+  max-height: 14rem;
+  overflow-y: auto;
+  background: var(--rs-surface);
+  color: var(--rs-ink);
+  border: 1px solid var(--rs-border);
+  border-radius: calc(var(--rs-radius) - 4px);
+  box-shadow: var(--rs-shadow);
+}
+.rs-select-menu-fixed {
+  position: fixed;
+  z-index: 200;
+}
+.rs-select-option {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  color: var(--rs-ink);
+  border-radius: calc(var(--rs-radius) - 8px);
+  padding: 0.5rem 0.65rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+.rs-select-option:hover {
+  background: var(--rs-surface-2);
+}
+.rs-select-option[data-active='true'] {
+  background: var(--rs-accent-soft);
+  color: var(--rs-accent);
+  font-weight: 600;
+}
+
+/* Remap leftover light Tailwind utilities so every panel follows the active theme */
+.rs-app .bg-white {
+  background-color: var(--rs-surface) !important;
+}
+.rs-app .bg-slate-50,
+.rs-app .bg-gray-50 {
+  background-color: var(--rs-bg-deep) !important;
+}
+.rs-app .bg-slate-100 {
+  background-color: var(--rs-surface-2) !important;
+}
+.rs-app .bg-teal-50 {
+  background-color: var(--rs-accent-soft) !important;
+}
+.rs-app .bg-teal-600,
+.rs-app .bg-teal-700,
+.rs-app .bg-teal-800,
+.rs-app .bg-slate-800 {
+  background-color: var(--rs-accent) !important;
+  color: var(--rs-on-accent) !important;
+}
+.rs-app .hover\:bg-slate-50:hover,
+.rs-app .hover\:bg-slate-50\/80:hover,
+.rs-app .hover\:bg-teal-50:hover {
+  background-color: var(--rs-surface-2) !important;
+}
+.rs-app .text-slate-800,
+.rs-app .text-slate-900,
+.rs-app .text-gray-900 {
+  color: var(--rs-ink) !important;
+}
+.rs-app .text-slate-400,
+.rs-app .text-slate-500,
+.rs-app .text-slate-600,
+.rs-app .text-slate-700,
+.rs-app .text-gray-400,
+.rs-app .text-gray-500 {
+  color: var(--rs-muted) !important;
+}
+.rs-app .text-teal-700,
+.rs-app .text-teal-800 {
+  color: var(--rs-accent) !important;
+}
+.rs-app .border-slate-100,
+.rs-app .border-slate-200,
+.rs-app .border-teal-200 {
+  border-color: var(--rs-border) !important;
+}
+.rs-app .border-t,
+.rs-app .border-b {
+  border-color: var(--rs-border);
+}
+.rs-app .shadow-sm,
+.rs-app .shadow-xl {
+  box-shadow: var(--rs-shadow) !important;
+}
+
+.rs-card {
+  background: var(--rs-surface);
+  border: 1px solid var(--rs-border);
+  border-radius: calc(var(--rs-radius) - 4px);
+  color: var(--rs-ink);
+}
+
+.rs-chip {
+  border-radius: 999px;
+  padding: 0.15rem 0.55rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.rs-rail {
+  width: 78px;
+  background: var(--rs-sidebar, var(--rs-surface));
+  border-right: 1px solid var(--rs-sidebar-border, var(--rs-border));
+  color: var(--rs-sidebar-ink, var(--rs-ink));
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.7rem 0.45rem;
+  overflow-y: auto;
+}
+
+.rs-rail button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.28rem;
+  border-radius: 12px;
+  padding: 0.6rem 0.2rem 0.5rem;
+  font-size: 0.62rem;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  color: var(--rs-sidebar-muted, var(--rs-muted));
+  background: transparent;
+  transition: background 140ms ease, color 140ms ease, transform 120ms ease;
+}
+.rs-rail button:hover {
+  background: color-mix(in srgb, var(--rs-accent) 18%, transparent);
+  color: var(--rs-sidebar-ink, var(--rs-ink));
+}
+.rs-rail button:active {
+  transform: scale(0.97);
+}
+.rs-rail button[data-active='true'] {
+  background: color-mix(in srgb, var(--rs-accent) 28%, transparent);
+  color: var(--rs-accent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--rs-accent) 45%, transparent);
+}
+.rs-rail-icon {
+  flex-shrink: 0;
+  opacity: 0.92;
+}
+.rs-rail button[data-active='true'] .rs-rail-icon {
+  opacity: 1;
+}
+
+.rs-dense .rs-btn-primary,
+.rs-dense .rs-btn-ghost,
+.rs-dense .rs-btn-secondary {
+  min-height: 34px;
+  font-size: 0.8rem;
+  padding-left: 0.75rem;
+  padding-right: 0.75rem;
+}
+
+.rs-touch-lg {
+  --rs-touch: 52px;
+}
+
+@keyframes rs-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.rs-animate-in {
+  animation: rs-fade-up 280ms ease both;
+}
+
+.rs-reduce-motion .rs-animate-in,
+.rs-reduce-motion * {
+  animation: none !important;
+  transition: none !important;
+}
+
+/* Theme remaps for panels using leftover Tailwind colors */
+.rs-app .bg-white,
+.rs-app .bg-white\/80,
+.rs-app .bg-white\/90,
+.rs-app .bg-white\/95 {
+  background-color: var(--rs-surface) !important;
+}
+.rs-app .bg-slate-50,
+.rs-app .bg-gray-50,
+.rs-app .bg-slate-50\/80,
+.rs-app .bg-slate-50\/90 {
+  background-color: var(--rs-surface-2) !important;
+}
+.rs-app .bg-slate-100,
+.rs-app .bg-gray-100,
+.rs-app .bg-slate-100\/90 {
+  background-color: var(--rs-surface-2) !important;
+}
+.rs-app .bg-teal-50,
+.rs-app .bg-teal-50\/40,
+.rs-app .bg-teal-50\/80,
+.rs-app .bg-teal-100 {
+  background-color: var(--rs-accent-soft) !important;
+}
+.rs-app .bg-teal-600,
+.rs-app .bg-teal-700,
+.rs-app .bg-teal-800,
+.rs-app .bg-slate-800 {
+  background-color: var(--rs-accent) !important;
+  color: var(--rs-on-accent) !important;
+}
+.rs-app .hover\:bg-slate-50:hover,
+.rs-app .hover\:bg-slate-50\/80:hover,
+.rs-app .hover\:bg-slate-100:hover,
+.rs-app .hover\:bg-gray-50:hover,
+.rs-app .hover\:bg-gray-100:hover,
+.rs-app .hover\:bg-teal-50:hover,
+.rs-app .hover\:bg-teal-800:hover {
+  background-color: var(--rs-surface-2) !important;
+}
+.rs-app .text-slate-900,
+.rs-app .text-slate-800,
+.rs-app .text-gray-900,
+.rs-app .text-gray-800 {
+  color: var(--rs-ink) !important;
+}
+.rs-app .text-slate-700,
+.rs-app .text-slate-600,
+.rs-app .text-slate-500,
+.rs-app .text-slate-400,
+.rs-app .text-gray-700,
+.rs-app .text-gray-600,
+.rs-app .text-gray-500,
+.rs-app .text-gray-400 {
+  color: var(--rs-muted) !important;
+}
+.rs-app .text-teal-700,
+.rs-app .text-teal-800,
+.rs-app .text-teal-600,
+.rs-app .text-teal-900,
+.rs-app .text-brand {
+  color: var(--rs-accent) !important;
+}
+.rs-app .border-slate-100,
+.rs-app .border-slate-200,
+.rs-app .border-slate-200\/80,
+.rs-app .border-slate-300,
+.rs-app .border-gray-100,
+.rs-app .border-gray-200,
+.rs-app .border-teal-100,
+.rs-app .border-teal-200 {
+  border-color: var(--rs-border) !important;
+}
+.rs-app .divide-slate-100 > :not([hidden]) ~ :not([hidden]),
+.rs-app .divide-slate-200 > :not([hidden]) ~ :not([hidden]) {
+  border-color: var(--rs-border) !important;
+}
+.rs-app .ring-1.ring-slate-200,
+.rs-app .ring-slate-200 {
+  --tw-ring-color: var(--rs-border) !important;
+}
+.rs-app .ring-teal-100,
+.rs-app .ring-teal-200 {
+  --tw-ring-color: color-mix(in srgb, var(--rs-accent) 28%, transparent) !important;
+}
+.rs-app .placeholder\:text-slate-400::placeholder,
+.rs-app .placeholder\:text-slate-500::placeholder,
+.rs-app .placeholder\:text-gray-400::placeholder,
+.rs-app input::placeholder,
+.rs-app textarea::placeholder {
+  color: color-mix(in srgb, var(--rs-muted) 82%, var(--rs-border)) !important;
+  opacity: 1;
+}
+.rs-app .bg-brand.text-white,
+.rs-app a.bg-brand,
+.rs-app button.bg-brand,
+.rs-app .bg-teal-600.text-white,
+.rs-app .bg-teal-700.text-white,
+.rs-app .bg-teal-800.text-white,
+.rs-app .bg-slate-800.text-white {
+  color: var(--rs-on-accent) !important;
+}
+.rs-app a.text-teal-700:hover,
+.rs-app a.text-brand:hover,
+.rs-app .hover\:text-teal-900:hover {
+  color: var(--rs-accent-hover) !important;
+}
+.rs-app tr:hover,
+.rs-app .hover\:bg-slate-50\/80:hover {
+  background-color: var(--rs-surface-2) !important;
+}
+.rs-app .text-slate-300 {
+  color: color-mix(in srgb, var(--rs-muted) 55%, var(--rs-border)) !important;
+}
+.rs-app *:focus-visible {
+  outline-color: color-mix(in srgb, var(--rs-accent) 55%, transparent);
+}
+
+@keyframes rs-sync-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+.rs-sync-pulse {
+  animation: rs-sync-pulse 1.1s ease-in-out infinite;
+}
+.rs-reduce-motion .rs-sync-pulse {
+  animation: none !important;
+}
+
+
+@keyframes rs-toast-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes rs-toast-progress {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+.rs-reduce-motion [style*='rs-toast-in'],
+.rs-reduce-motion [style*='rs-toast-progress'] {
+  animation: none !important;
+}

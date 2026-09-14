@@ -1,0 +1,11 @@
+Invoice No: MP-7781 (continued)
+
+Sl.No Item                    HSN     Qty    Rate     Amount
+4     Amaron Flo 150Ah        8507    2      11200    22400
+5     Sukam Shine 1500        8504    1      9500     9500
+6     Battery Water 5L        2805    10     80       800
+
+Taxable: 110900
+CGST 9%: 9981
+SGST 9%: 9981
+Grand Total: 130862

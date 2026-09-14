@@ -1,0 +1,87 @@
+IRN
+Ack No.
+Ack Date : 27-May-26
+No.
+:142620411352896
+CHANDPUR
+fad58202dd1 c27132
+SHUBH TRADERS 2026-27
+NEAR SARGAM THEATER
+3cb568717f3dfca365a149f765acaa76bbe4b1e100af9ef-
+Buyer (Bill to)
+GSTIN/UIN: 09AHDPA3364M1ZA
+GSTIN/UIN
+State Name: Uttar Pradesh, Code : 09
+M/s Tyagi Electric Works
+PAN/IT No
+Gulabi Market, Silara Road, Chandpur, Bijnor
+TAX INVOICE
+: 09ASWPK4296J1ZR
+:ASWPK4296J
+State Name
+Place of Supply: Uttar Pradesh
+: Uttar Pradesh, Code: 09
+Description of Goods
+1|LUM 12V150AH ILTJ18060 85072000
+FNSD BTY
+5 LUMINOUS EVO-D 1050
+/12V
+6LUMINOUS EVO-D 1650
+I24V
+2| LUMINOUS EVO-D 7O0/12V 85044010
+3|LUMINOUS EVO-D 800/12V85044010
+4|LUMINOUS EVO-D 900/12
+OUTPUT CGST @9 %
+HSN/SAC GST
+os /06/p6
+cf.No. -304749
+Ro 12000o-
+85044010
+85044010
+85044010
+(ORIGINAL FOR RECIPIENT)
+Rate
+INVOICE No.
+358
+Delivery Note
+Reference No. & Date.
+Buyer's Order No.
+Dispatch Doc No.
+Dispatched through
+Bill of Lading/LR-RR No.
+e-Way Bill No. Dated
+4173004595027-May-26
+Terms of Delivery
+QuantitySale Price
+18 % 5.00 Pcs.
+18% 3.00 Pcs.
+18%| 3.00 Pcs.
+18% 3.00 Pcs.
+18% 3.00 Pcs.
+18% 1.00 Pcs.
+This is a Computer Generated INVOICE
+e-INVOICE
+Mode/Terms of Payrment
+Other References
+Dated
+Delivery Note Date
+Destination
+Motor Vehicde No.
+UP23AT5449
+Rate per
+10762.71| Pcs.
+3389.83| Pcs.
+3559.32 Pcs.
+3771.19| Pcs.
+4110.17 Pcs.
+5932.20 Pcs.
+Amount
+53813.55
+10169.49
+10677.96
+11313.57
+12330.51
+5932.20
+104237.28
+9381.36
+continued to page number 2

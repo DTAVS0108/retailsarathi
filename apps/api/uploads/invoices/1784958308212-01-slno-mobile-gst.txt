@@ -1,0 +1,18 @@
+TAX INVOICE
+Shree Mobile Distributors
+Rajkot, Gujarat
+GSTIN: 24AABCS1429B1ZK
+Invoice No: SMD/2026-27/0881
+Date: 15/07/2026
+Bill To: Galaxy Electronics
+
+Sl. Description of Goods                  HSN/SAC   Qty   Rate      Amount
+1. Samsung Galaxy A15 128GB Blue          8517      2     14500     29000
+2. Boat Airdopes 141 TWS Earbuds          8518      5     999       4995
+3. Mi 33W SonicCharge Fast Charger        8504      10    599       5990
+4. Spigen Tough Armor Case Universal      3926      20    149       2980
+
+Taxable Value  42965
+CGST 9%  3866.85
+SGST 9%  3866.85
+Grand Total  50698.70

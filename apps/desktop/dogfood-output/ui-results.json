@@ -1,0 +1,86 @@
+{
+  "pass": 15,
+  "fail": 1,
+  "results": [
+    {
+      "name": "Nav → POS",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "POS add product to cart",
+      "ok": true,
+      "detail": "clicked product"
+    },
+    {
+      "name": "Customer full form modal",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Multi-bill new tab",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "F2 product picker",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Ctrl+/ shortcuts",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Tab Held",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Tab Returns",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Tab Bills",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Tab Repairs",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Tab Products",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Tab Khata",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Tab Stats",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Tab Settings",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Khata Add customer popup",
+      "ok": false,
+      "detail": "button missing — may not be on Khata tab"
+    },
+    {
+      "name": "Products management controls",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}

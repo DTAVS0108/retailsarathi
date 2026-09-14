@@ -1,0 +1,14 @@
+TAX INVOICE
+PowerCell Traders LLP
+GSTIN: 27AABCT1332L1ZV
+Inv No.: PCT-INV-4521
+Dated: 12-Jun-2026
+
+Description|HSN|Qty|Rate|Amount
+Exide InvaMaster 150Ah Tubular|8507|4|11250|45000
+Luminous Zelio+ 1100 VA Inverter|8504|2|6250|12500
+V-Guard VG 400 Stabilizer|8504|6|1890|11340
+Amaron FLO 150Ah Tall Tubular|8507|3|10800|32400
+
+Taxable Value: 101240
+Grand Total: ₹119463.20

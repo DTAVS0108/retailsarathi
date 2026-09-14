@@ -1,0 +1,31 @@
+TAX INVOICE
+TechGuruPlus
+OKHLA INDUSTRIAL AREA, PHASE-1, NEW DELHI - 110020
+CONTACT: 9876543210
+GST Tin No: 07PTAFF9867H1Z4
+
+Bill to
+NAZIM KHAN
+D-122, Lajpat Nagar, New Delhi-110015
+GST Tin No: 07PDUJS4678K1Z4
+
+INVOICE No: 3567/2017-18
+Dated: 14-Dec-17
+Place of Supply: New Delhi
+
+Description of Service     HSN CODE   QTY   Units    RATE    Amount
+LED LIGHTS                 85013410   50    pcs      500     25000
+Bulbs                      85013420   20    Dozens   2300    46000
+
+Total                      71000
+Less Discount 20%          14200
+Taxable Value              56800
+ADD CGST 12%               6816
+ADD SGST 6%                3408
+Grand Total                67024.00
+
+Amount Chargeable (in words)
+Sixty Seven Thousand and Twenty Four Only
+Company's PAN: APKFD3720Z
+For TechGuruPlus
+Authorized Signatory

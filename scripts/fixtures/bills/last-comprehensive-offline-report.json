@@ -1,0 +1,445 @@
+{
+  "passed": 28,
+  "failed": 0,
+  "results": [
+    {
+      "name": "golden-01-battery-trading",
+      "ok": true,
+      "fails": [],
+      "summary": {
+        "supplier": "Battery Trading Management",
+        "invoice": "18",
+        "gstin": "24AABCT1332L1ZV",
+        "customer": "Suraj Kapadiya",
+        "total": 5545.2,
+        "lines": 3,
+        "lineNames": [
+          "BL 56 Battery",
+          "HI 57 Amaron",
+          "BL 56 Battery"
+        ]
+      }
+    },
+    {
+      "name": "golden-02-agarwal-cine",
+      "ok": true,
+      "fails": [],
+      "summary": {
+        "supplier": "Agarwal Cine World Private Limited",
+        "invoice": "ACWPL/1626",
+        "gstin": "27AARCA3938P1ZT",
+        "customer": "Maddock Films Pvt Ltd",
+        "total": 40993,
+        "lines": 3,
+        "lineNames": [
+          "Hp Digital Vinyl Print with Matt Lam Past on 5mm Sb",
+          "Digital Normal Matt Flex Print",
+          "Standy with Digital Star Flex Print"
+        ]
+      }
+    },
+    {
+      "name": "golden-03-techguru",
+      "ok": true,
+      "fails": [],
+      "summary": {
+        "supplier": "TechGuruPlus",
+        "invoice": "3567/2017-18",
+        "gstin": "07PTAFF9867H1Z4",
+        "customer": "NAZIM KHAN",
+        "total": 67024,
+        "lines": 2,
+        "lineNames": [
+          "LED LIGHTS",
+          "Bulbs"
+        ]
+      }
+    },
+    {
+      "name": "golden-04-raunaq",
+      "ok": true,
+      "fails": [],
+      "summary": {
+        "supplier": "M/s Raunaq Batteries",
+        "invoice": "RB/2026-27/359",
+        "gstin": "09ABKPH0005M1ZS",
+        "customer": "Tyagi Electric Works",
+        "total": 39960,
+        "lines": 3,
+        "lineNames": [
+          "ENERGY SAVER NEW 825 12V DG",
+          "SUPER POWER NEW 900 12V DG",
+          "SUPER POWER NEW 700 12V DG"
+        ]
+      }
+    },
+    {
+      "name": "golden-05-vakeel",
+      "ok": true,
+      "fails": [],
+      "summary": {
+        "supplier": "Vakeel Battery",
+        "invoice": "25-26/374",
+        "gstin": "09AFQPA3676K1ZY",
+        "customer": "M/S TYAGI ELECTRIC WORKS",
+        "total": 198450,
+        "lines": 2,
+        "lineNames": [
+          "ED22036TT 200AH",
+          "ED16536TT 150AH"
+        ]
+      }
+    },
+    {
+      "name": "golden-06-goel",
+      "ok": true,
+      "fails": [],
+      "summary": {
+        "supplier": "M/S GOEL ENTERPRISES",
+        "invoice": "67",
+        "gstin": "09ARDPG9739J1ZA",
+        "customer": "TYAGI ELECTRIC WORKS",
+        "total": 182250,
+        "lines": 2,
+        "lineNames": [
+          "BATTERY LUMINOUS ILTT 18060 TT",
+          "BATTERY LUMINOUS ILTT 18148 12V 15"
+        ]
+      }
+    },
+    {
+      "name": "golden-07-shubh-merged",
+      "ok": true,
+      "fails": [],
+      "summary": {
+        "supplier": "SHUBH TRADERS",
+        "invoice": "358",
+        "gstin": "09AHDPA3364M1ZA",
+        "customer": "M/s Tyagi Electric Works",
+        "total": 123000,
+        "lines": 6,
+        "lineNames": [
+          "LUM 12V150AH ILTT 18060 FNSD BTY",
+          "LUMINOUS EVO-D 700/12V",
+          "LUMINOUS EVO-D 800/12V",
+          "LUMINOUS EVO-D 900/12V",
+          "LUMINOUS EVO-D 1050/12V",
+          "LUMINOUS EVO-D 1650/24V"
+        ]
+      }
+    },
+    {
+      "name": "format-slno-mobile",
+      "ok": true,
+      "fails": [],
+      "summary": {
+        "supplier": "Shree Mobile Distributors",
+        "invoice": "SMD/2026-27/0881",
+        "gstin": "24AABCS1429B1ZK",
+        "customer": "Galaxy Electronics",
+        "total": 50698,
+        "lines": 4,
+        "lineNames": [
+          "Spigen Tough Armor Case Universal",
+          "Mi 33W SonicCharge Fast Charger",
+          "Boat Airdopes 141 TWS Earbuds",
+          "Samsung Galaxy A15 128GB Blue"
+        ]
+      }
+    },
+    {
+      "name": "format-pipe-battery",
+      "ok": true,
+      "fails": [],
+      "summary": {
+        "supplier": "PowerCell Traders",
+        "invoice": "PCT-INV-4521",
+        "gstin": "27AABCT1332L1ZV",
+        "total": 119463.2,
+        "lines": 4,
+        "lineNames": [
+          "V-Guard VG 400 Stabilizer",
+          "Exide InvaMaster 150Ah Tubular",
+          "Amaron FLO 150Ah Tall Tubular",
+          "Luminous Zelio+ 1100 VA Inverter"
+        ]
+      }
+    },
+    {
+      "name": "format-ocr-noisy",
+      "ok": true,
+      "fails": [],
+      "summary": {
+        "supplier": "TechGuru Wholesale",
+        "invoice": "TG/24-25/903",
+        "gstin": "09AABCT1332L1ZV",
+        "total": 57756.28,
+        "lines": 3,
+        "lineNames": [
+          "Havells Ceiling Fan 1200mm",
+          "JBL Go 3 Portable Speaker",
+          "Samsung 43 inch Crystal LED TV"
+        ]
+      }
+    },
+    {
+      "name": "format-tab-units",
+      "ok": true,
+      "fails": [],
+      "summary": {
+        "supplier": "City Care Parts",
+        "invoice": "CC/778",
+        "gstin": "23AAACP9999A1Z9",
+        "total": 30200,
+        "lines": 3,
+        "lineNames": [
+          "Battery Terminal Cable Set Heavy",
+          "Microtek UPS EB 700",
+          "SF Sonic Digi 100 SMF Battery"
+        ]
+      }
+    },
+    {
+      "name": "format-discount-col",
+      "ok": true,
+      "fails": [],
+      "summary": {
+        "supplier": "Digital Hub India",
+        "invoice": "DH/2026/331",
+        "gstin": "07AACCD1234F1Z8",
+        "total": 148773,
+        "lines": 4,
+        "lineNames": [
+          "Portronics Konnect G15 Type-C Cable",
+          "Realme Buds Air 5",
+          "OnePlus Nord CE 3 Lite 8GB",
+          "Apple iPhone 15 128GB Black"
+        ]
+      }
+    },
+    {
+      "name": "format-csv-simple",
+      "ok": true,
+      "fails": [],
+      "summary": {
+        "lines": 3,
+        "lineNames": [
+          "V-Guard Stabilizer 500VA",
+          "Exide Battery 150Ah Tubular",
+          "Luminous Inverter 1100VA"
+        ]
+      }
+    },
+    {
+      "name": "multipage-p1-only",
+      "ok": true,
+      "fails": [],
+      "summary": {
+        "supplier": "MultiPage Traders",
+        "invoice": "MP-7781",
+        "gstin": "27AABCM1234D1Z5",
+        "lines": 3,
+        "lineNames": [
+          "Luminous Zelio",
+          "Exide 150Ah Tubular",
+          "Microtek UPS EB 900"
+        ]
+      }
+    },
+    {
+      "name": "multipage-p2-only",
+      "ok": true,
+      "fails": [],
+      "summary": {
+        "supplier": "Sl.No Item HSN Qty Rate Amount",
+        "invoice": "MP-7781",
+        "total": 130862,
+        "lines": 3,
+        "lineNames": [
+          "Sukam Shine",
+          "Battery Water 5L",
+          "Amaron Flo 150Ah"
+        ]
+      }
+    },
+    {
+      "name": "shubh-p1-only",
+      "ok": true,
+      "fails": [],
+      "summary": {
+        "supplier": "SHUBH TRADERS",
+        "invoice": "358",
+        "gstin": "09AHDPA3364M1ZA",
+        "customer": "M/s Tyagi Electric Works",
+        "total": 123000,
+        "lines": 6,
+        "lineNames": [
+          "LUM 12V150AH ILTT 18060 FNSD BTY",
+          "LUMINOUS EVO-D 700/12V",
+          "LUMINOUS EVO-D 800/12V",
+          "LUMINOUS EVO-D 900/12V",
+          "LUMINOUS EVO-D 1050/12V",
+          "LUMINOUS EVO-D 1650/24V"
+        ]
+      }
+    },
+    {
+      "name": "shubh-p2-only-clean",
+      "ok": true,
+      "fails": [],
+      "summary": {
+        "supplier": "SHUBH TRADERS",
+        "invoice": "358",
+        "gstin": "09AHDPA3364M1ZA",
+        "customer": "M/s Tyagi Electric Works",
+        "total": 123000,
+        "lines": 0,
+        "lineNames": []
+      }
+    },
+    {
+      "name": "shubh-p1+p2-merged",
+      "ok": true,
+      "fails": [],
+      "summary": {
+        "supplier": "SHUBH TRADERS",
+        "invoice": "358",
+        "lines": 6
+      }
+    },
+    {
+      "name": "ocr-shubh-p2-camera",
+      "ok": true,
+      "fails": [],
+      "summary": {
+        "supplier": "SHUBH TRADERS",
+        "invoice": "358",
+        "gstin": "09AHDPA3364M1ZA",
+        "customer": "M/s Tyagi Electric Works",
+        "total": 123000,
+        "lines": 0,
+        "lineNames": []
+      }
+    },
+    {
+      "name": "ocr-shubh-user",
+      "ok": true,
+      "fails": [],
+      "summary": {
+        "supplier": "SHUBH TRADERS",
+        "invoice": "358",
+        "gstin": "09AHDPA3364M1ZA",
+        "customer": "M/s Tyagi Electric Works",
+        "total": 123000,
+        "lines": 0,
+        "lineNames": []
+      }
+    },
+    {
+      "name": "ocr-goel-user",
+      "ok": true,
+      "fails": [],
+      "summary": {
+        "supplier": "GOEL ENTERPRISES",
+        "gstin": "09ARDPG9739J1ZA",
+        "customer": "TYAGI ELECTRIC WORKS",
+        "total": 182250,
+        "lines": 2,
+        "lineNames": [
+          "BATTERY LUMINOUS ILTT 18060 TT",
+          "BATTERY LUMINOUS ILTT 18148 12V 15"
+        ]
+      }
+    },
+    {
+      "name": "ocr-goel-best",
+      "ok": true,
+      "fails": [],
+      "summary": {
+        "supplier": "GOEL ENTERPRISES",
+        "invoice": "5",
+        "gstin": "09ARDPG9739J1ZA",
+        "customer": "TYAGI ELECTRIC WORKS TYAGI ELECTRIC WORKS",
+        "total": 182250,
+        "lines": 2,
+        "lineNames": [
+          "BATTERY LUMINOUS ILTT 18060 TT",
+          "BATTERY LUMINOUS ILTT 18148 12V 15"
+        ]
+      }
+    },
+    {
+      "name": "ocr-vakeel-user",
+      "ok": true,
+      "fails": [],
+      "summary": {
+        "supplier": "Vakeel Battery Parts",
+        "invoice": "25-26/374",
+        "gstin": "09AFQPA3676K1ZY",
+        "customer": "M/S TYAGI ELECTRIC WORKS",
+        "total": 198450,
+        "lines": 2,
+        "lineNames": [
+          "ED22036TT 200AH",
+          "ED16536TT 150AH"
+        ]
+      }
+    },
+    {
+      "name": "ocr-shubh-p1-camera",
+      "ok": true,
+      "fails": [],
+      "summary": {
+        "supplier": "SHUBH TRADERS",
+        "gstin": "09AHDPA3364M1ZA",
+        "customer": "M/s Tyagi Electric Works",
+        "lines": 0,
+        "lineNames": []
+      }
+    },
+    {
+      "name": "ocr-shubh-p1+p2-merged",
+      "ok": true,
+      "fails": [],
+      "summary": {
+        "supplier": "SHUBH TRADERS",
+        "invoice": "358",
+        "lines": 0
+      }
+    },
+    {
+      "name": "ocr-sample-jpg1",
+      "ok": true,
+      "fails": [],
+      "summary": {
+        "supplier": "SHUBH TRADERS",
+        "gstin": "09AHDPA3364M1ZA",
+        "customer": "M/s Tyagi Electric Works",
+        "lines": 0,
+        "lineNames": []
+      }
+    },
+    {
+      "name": "ocr-sample-jpg2",
+      "ok": true,
+      "fails": [],
+      "summary": {
+        "supplier": "SHUBH TRADERS",
+        "invoice": "358",
+        "gstin": "09AHDPA3364M1ZA",
+        "total": 123000,
+        "lines": 0,
+        "lineNames": []
+      }
+    },
+    {
+      "name": "multipage-merged-full",
+      "ok": true,
+      "fails": [],
+      "summary": {
+        "lines": 6,
+        "invoice": "MP-7781"
+      }
+    }
+  ]
+}

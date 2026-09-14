@@ -1,0 +1,93 @@
+const text = `NEEL
+|66, Matsajibi Colony, Kolkata,700108.
+PH-9330896714 / 7003042388,
+Email: neel240219 @gmail.com
+|GSTN NO - 198INPD2904E 1ZH
+BANK DETAILS:
+PUNJAB NATIONAL BANK,
+A/C NO-1880056000040,IFS CODE: PUNB0188020,
+NAWAPARA BRANCH.
+Buyer:
+DEBASRI DEY (CASH)
+MOBILE: 094331 46301
+Description of Goods
+LB HP HTO3XL OEM BOX PACK BATTERY
+6th months warranty (signed) Including Installation
+Amount Chargeable (in words)
+Rs. Three Thousand Five Hundred only
+Declaration
+TAX INVOICE
+cGST @ 9% SALES
+SGST @ 9% SALES
+ROUNDED OFF
+Total
+All Products Warranty Will Covered By Their Respective Service Centers.
+|Contact Respected Service Center Regarding Warranty Related issue.
+INVOICE No.
+NL/2023-24/117
+Delivery Note
+Supplier's Ref.
+Buyer's Order No.
+Despatch Document No.
+Despatch Through
+|Terms of Delivery
+HSN/SACc Quantity Rate
+8507
+1
+SUBJECT TO KOLKATA JURISDICTION
+This is a Computer Generated INVOICE no Signature Required
+(ORIGINAL FOR BUYER)
+Dated
+29/02/2024
+Mode/Terms of Payment
+Other Reference(s)
+Dated
+Dated:
+Destination:
+Per
+3500.00 Pcs.
+Amount
+3500.00
+3.500.0o
+3500.00
+E. &0. E.
+for NEEL
+Autnorisea Signatory
+`;
+
+const fs = require('fs');
+fs.writeFileSync('scripts/_neel-ocr.txt', text);
+const BASE = 'http://127.0.0.1:4000/api/v1';
+(async () => {
+  const login = await fetch(BASE + '/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: 'owner@demo.retailsarathi.in', password: 'Demo@123' }),
+  }).then((r) => r.json());
+  const body = await fetch(BASE + '/scan/parse-purchase', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + login.accessToken },
+    body: JSON.stringify({ text }),
+  }).then((r) => r.json());
+  console.log(JSON.stringify({
+    supplier: body.supplierName,
+    address: body.supplierAddress,
+    gstin: body.gstin,
+    phone: body.phone,
+    customer: body.customerName,
+    inv: body.invoiceNumber,
+    date: body.invoiceDate,
+    total: body.totalAmount,
+    taxable: body.taxableValue,
+    cgst: body.cgstAmount,
+    sgst: body.sgstAmount,
+    tax: body.taxAmount,
+    bank: body.bankName,
+    ac: body.bankAccount,
+    ifsc: body.ifsc,
+    branch: body.bankBranch,
+    lines: (body.lines || []).map((l) => ({
+      name: l.name, hsn: l.hsnCode, qty: l.quantity, rate: l.unitPrice, gst: l.gstRate,
+    })),
+  }, null, 2));
+})();

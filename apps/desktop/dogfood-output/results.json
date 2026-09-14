@@ -1,0 +1,445 @@
+{
+  "pass": 68,
+  "fail": 4,
+  "skip": 1,
+  "results": [
+    {
+      "area": "Auth",
+      "name": "Login demo owner",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "area": "Auth",
+      "name": "Login bad password rejected",
+      "status": "PASS",
+      "detail": "HTTP 401"
+    },
+    {
+      "area": "Bootstrap",
+      "name": "GET /tenants/profile",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "area": "Bootstrap",
+      "name": "GET /products?pageSize=500",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "area": "Bootstrap",
+      "name": "GET /customers",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "area": "Bootstrap",
+      "name": "Desktop customers list contract",
+      "status": "PASS",
+      "detail": "8 customers"
+    },
+    {
+      "area": "Bootstrap",
+      "name": "GET /invoices?status=DRAFT",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "area": "Bootstrap",
+      "name": "Have at least one product",
+      "status": "PASS",
+      "detail": "Deep Test DT-MS1EPS7Z edited"
+    },
+    {
+      "area": "Stats",
+      "name": "GET /tenants/dashboard",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "area": "Stats",
+      "name": "GET /analytics/monthly",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "area": "Stats",
+      "name": "GET /analytics/sale-ledger",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "area": "Stats",
+      "name": "GET /analytics/stock-flow",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "area": "Stats",
+      "name": "GET /products/stock-summary",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "area": "Stats",
+      "name": "GET /reports/day-end",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "area": "Products",
+      "name": "GET /products/facets",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "area": "Products",
+      "name": "GET /products/inactive",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "area": "Products",
+      "name": "GET /categories",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "area": "Products",
+      "name": "POST /categories/sync-from-products",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "area": "Products",
+      "name": "GET /products/export",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "area": "Products",
+      "name": "GET /products/barcode/:code",
+      "status": "SKIP",
+      "detail": "no barcode on sample product"
+    },
+    {
+      "area": "Products",
+      "name": "GET /products/serials/search empty-ish",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "area": "Products",
+      "name": "Unknown barcode → 404",
+      "status": "PASS",
+      "detail": "HTTP 404"
+    },
+    {
+      "area": "Products",
+      "name": "POST /products create",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "area": "Products",
+      "name": "PATCH product",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "area": "Products",
+      "name": "POST stock adjust +",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "area": "Products",
+      "name": "POST stock adjust -",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "area": "Products",
+      "name": "Stock adjust zero rejected",
+      "status": "FAIL",
+      "detail": "API accepted quantity=0 (desktop form blocks; API should too)"
+    },
+    {
+      "area": "Products",
+      "name": "Drain stock for archive",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "area": "Products",
+      "name": "DELETE archive",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "area": "Products",
+      "name": "POST restore",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "area": "Customers",
+      "name": "POST /customers full fields",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "area": "Customers",
+      "name": "Duplicate phone rejected",
+      "status": "FAIL",
+      "detail": "API accepted duplicate phone (desktop/web can create twin parties)"
+    },
+    {
+      "area": "Customers",
+      "name": "Invalid phone rejected",
+      "status": "FAIL",
+      "detail": "API accepted phone=123 (desktop modal validates; API does not)"
+    },
+    {
+      "area": "Customers",
+      "name": "Missing name rejected",
+      "status": "FAIL",
+      "detail": "API accepted empty name"
+    },
+    {
+      "area": "Khata",
+      "name": "GET /customers/aging/report",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "area": "Khata",
+      "name": "GET /suppliers/aging/report",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "area": "Khata",
+      "name": "GET /parties/search",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "area": "Khata",
+      "name": "Party search <2 chars rejected",
+      "status": "PASS",
+      "detail": "HTTP 400"
+    },
+    {
+      "area": "Khata",
+      "name": "GET customer statement",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "area": "Khata",
+      "name": "GET open-invoices",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "area": "Khata",
+      "name": "Collect with 0 balance",
+      "status": "PASS",
+      "detail": "Accepted as advance/collection (API allows overpay → advance)"
+    },
+    {
+      "area": "Khata",
+      "name": "GET /suppliers/:id",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "area": "POS",
+      "name": "POST /invoices/hold",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "area": "POS",
+      "name": "PATCH finalize held",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "area": "POS",
+      "name": "GET invoice detail",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "area": "POS",
+      "name": "GET invoice print payload",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "area": "POS",
+      "name": "GET thermal text",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "area": "POS",
+      "name": "Search invoice by number",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "area": "POS",
+      "name": "POST whatsapp",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "area": "POS",
+      "name": "POST warranty-cards",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "area": "POS",
+      "name": "POST /hardware/print-thermal",
+      "status": "PASS",
+      "detail": "HTTP 400"
+    },
+    {
+      "area": "POS",
+      "name": "PATCH undo within grace",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "area": "POS",
+      "name": "Undo cancels invoice (not draft)",
+      "status": "PASS",
+      "detail": "status=CANCELLED"
+    },
+    {
+      "area": "POS",
+      "name": "Re-finalize cancelled id rejected",
+      "status": "PASS",
+      "detail": "HTTP 400"
+    },
+    {
+      "area": "Returns",
+      "name": "POST /invoices/returns",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "area": "POS",
+      "name": "Hold then finalize (tax-aware path)",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "area": "POS",
+      "name": "Finalize tax-aware hold",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "area": "POS",
+      "name": "Split pay CASH+UPI invoice",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "area": "POS",
+      "name": "Empty lines rejected",
+      "status": "PASS",
+      "detail": "HTTP 400"
+    },
+    {
+      "area": "POS",
+      "name": "Oversell stock guarded",
+      "status": "PASS",
+      "detail": "HTTP 400"
+    },
+    {
+      "area": "Bills",
+      "name": "GET invoices FINALIZED",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "area": "Bills",
+      "name": "GET invoices search empty",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "area": "Repairs",
+      "name": "GET /repairs",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "area": "Repairs",
+      "name": "GET /users/technicians",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "area": "Repairs",
+      "name": "POST /repairs",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "area": "Repairs",
+      "name": "GET repair detail",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "area": "Repairs",
+      "name": "PATCH status DIAGNOSED",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "area": "Repairs",
+      "name": "PATCH status IN_REPAIR",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "area": "Repairs",
+      "name": "Illegal status jump rejected",
+      "status": "PASS",
+      "detail": "HTTP 400"
+    },
+    {
+      "area": "Repairs",
+      "name": "POST parts",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "area": "Repairs",
+      "name": "POST send-estimate",
+      "status": "PASS",
+      "detail": "HTTP 201: Repair estimate for Inverter DT-1 (REP-2026-00002): ₹500. Reply YES to approve."
+    },
+    {
+      "area": "Repairs",
+      "name": "POST create-invoice",
+      "status": "PASS",
+      "detail": "HTTP 201: "
+    },
+    {
+      "area": "Authz",
+      "name": "Invalid JWT rejected",
+      "status": "PASS",
+      "detail": "HTTP 401"
+    }
+  ]
+}

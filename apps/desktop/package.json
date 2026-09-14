@@ -1,0 +1,61 @@
+{
+  "name": "@retail-sarathi/desktop",
+  "version": "0.1.1",
+  "private": true,
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "node scripts/build-release.mjs",
+    "build:local": "node scripts/prepare-icons.mjs && tsc && vite build && electron-builder",
+    "icons": "node scripts/prepare-icons.mjs",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@retail-sarathi/gst-engine": "*",
+    "@retail-sarathi/types": "*",
+    "@retail-sarathi/ui": "*",
+    "better-sqlite3": "^11.10.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "@vitejs/plugin-react": "^4.6.0",
+    "autoprefixer": "^10.4.21",
+    "electron": "36.9.5",
+    "electron-builder": "^26.0.12",
+    "postcss": "^8.5.6",
+    "sharp": "^0.34.3",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.5",
+    "vite-plugin-electron": "^0.29.0",
+    "vite-plugin-electron-renderer": "^0.14.6"
+  },
+  "build": {
+    "appId": "in.retailsarathi.desktop",
+    "productName": "RetailSarathi",
+    "icon": "build/icon.png",
+    "electronVersion": "36.9.5",
+    "directories": {
+      "output": "release"
+    },
+    "files": ["dist/**/*", "dist-electron/**/*", "package.json"],
+    "extraResources": [
+      { "from": "build/icon.png", "to": "app-icon.png" }
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "RetailSarathi POS"
+    }
+  }
+}

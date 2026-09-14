@@ -1,0 +1,16 @@
+TAX INVOICE
+PowerHub Distributors Pvt Ltd
+Okhla Phase-1, New Delhi - 110020
+GSTIN: 07AAACP1234A1Z5
+INVOICE No: PH/2026-27/0142
+Dated: 18-Jul-26
+
+Description of Goods          HSN     QTY   RATE      Amount
+Exide InvaMaster 150Ah Tubular Battery  8507  2  11800  23600
+Luminous Zelio 1100 Pure Sine Wave Inverter  8504  3  5800  17400
+V-Guard VG 500 Stabilizer  8504  5  2100  10500
+Battery Terminal Cable Set Heavy  8544  10  180  1800
+Eastman EM150 Tubular Battery 150Ah  8507  4  10500  42000
+
+Taxable Value  95300
+Grand Total  108000.00

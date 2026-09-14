@@ -1,0 +1,409 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --rs-bg: #e8f1f0;
+  --rs-bg-deep: #d5e8e5;
+  --rs-surface: #ffffff;
+  --rs-surface-2: #f3faf8;
+  --rs-ink: #0f2f2c;
+  --rs-muted: #5b7a76;
+  --rs-accent: #0f766e;
+  --rs-accent-hover: #0d5f59;
+  --rs-accent-soft: #ccfbf1;
+  --rs-on-accent: #ffffff;
+  --rs-accent-secondary: #f59e0b;
+  --rs-header: linear-gradient(135deg, #0f766e 0%, #115e59 55%, #134e4a 100%);
+  --rs-header-ink: #f0fdfa;
+  --rs-sidebar: linear-gradient(185deg, #0d9488 0%, #0f766e 42%, #115e59 100%);
+  --rs-sidebar-ink: #f8fafa;
+  --rs-sidebar-muted: #99f6e4;
+  --rs-sidebar-border: rgba(255, 255, 255, 0.14);
+  --rs-sidebar-surface: rgba(255, 255, 255, 0.08);
+  --rs-sidebar-soft: rgba(255, 255, 255, 0.14);
+  --rs-border: #c5ddd8;
+  --rs-danger: #b91c1c;
+  --rs-shadow: 0 12px 40px rgba(15, 118, 110, 0.1);
+  --rs-radius: 14px;
+  /* ~2px thinner than the default OS scrollbar track (~17px → 15px) */
+  --rs-scrollbar-size: 15px;
+  color-scheme: light;
+}
+
+/* App-wide thinner scrollbars (sidebar, main, modals, lists) */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--rs-muted) 55%, var(--rs-border)) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: var(--rs-scrollbar-size);
+  height: var(--rs-scrollbar-size);
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--rs-muted) 45%, var(--rs-border));
+  border-radius: 999px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--rs-muted) 70%, var(--rs-ink));
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+html.rs-theme-dark {
+  color-scheme: dark;
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    margin: 0;
+    padding: 0;
+    background: var(--rs-bg);
+  }
+
+  body {
+    @apply font-body antialiased;
+    margin: 0;
+    padding: 0;
+    background: var(--rs-bg);
+    color: var(--rs-ink);
+  }
+
+  html.rs-theme-dark input:not([type='checkbox']):not([type='radio']):not([type='range']),
+  html.rs-theme-dark select,
+  html.rs-theme-dark textarea {
+    background-color: var(--rs-surface);
+    color: var(--rs-ink);
+    border-color: var(--rs-border);
+  }
+
+  html.rs-theme-dark select option {
+    background-color: var(--rs-surface);
+    color: var(--rs-ink);
+  }
+
+  section[id] {
+    scroll-margin-top: 5.5rem;
+  }
+}
+
+html.rs-reduce-motion *,
+html.rs-reduce-motion *::before,
+html.rs-reduce-motion *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+}
+
+/* Chrome backdrop mesh orbs */
+.rs-bg-orb {
+  animation: rsBgOrb 22s ease-in-out infinite alternate;
+  will-change: transform;
+}
+html.rs-reduce-motion .rs-bg-orb {
+  animation: none !important;
+}
+
+@keyframes rsBgOrb {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(3%, -2%, 0) scale(1.06);
+  }
+  100% {
+    transform: translate3d(-2%, 3%, 0) scale(1.03);
+  }
+}
+
+html[data-density='compact'] .rs-page {
+  @apply space-y-4 p-3 sm:p-4 lg:p-5;
+}
+
+html.rs-sidebar-flat {
+  --rs-sidebar: var(--rs-surface);
+}
+
+/**
+ * Remap leftover light-only Tailwind inside the dashboard so every view
+ * follows the active theme (fixes Midnight Graphite light-on-light / dark-on-dark).
+ */
+.rs-themed .bg-white,
+.rs-themed .bg-white\/80,
+.rs-themed .bg-white\/90,
+.rs-themed .bg-white\/95 {
+  background-color: var(--rs-surface) !important;
+}
+.rs-themed .bg-slate-50,
+.rs-themed .bg-gray-50,
+.rs-themed .bg-slate-50\/80,
+.rs-themed .bg-slate-50\/90 {
+  background-color: var(--rs-surface-2) !important;
+}
+.rs-themed .bg-slate-100,
+.rs-themed .bg-gray-100,
+.rs-themed .bg-slate-100\/90 {
+  background-color: var(--rs-surface-2) !important;
+}
+.rs-themed .bg-teal-50,
+.rs-themed .bg-teal-50\/80,
+.rs-themed .bg-teal-100 {
+  background-color: var(--rs-accent-soft) !important;
+}
+.rs-themed .bg-teal-600,
+.rs-themed .bg-teal-700,
+.rs-themed .bg-teal-800 {
+  background-color: var(--rs-accent) !important;
+  color: var(--rs-on-accent) !important;
+}
+.rs-themed .hover\:bg-slate-50:hover,
+.rs-themed .hover\:bg-slate-100:hover,
+.rs-themed .hover\:bg-gray-50:hover,
+.rs-themed .hover\:bg-gray-100:hover,
+.rs-themed .hover\:bg-teal-50:hover {
+  background-color: var(--rs-surface-2) !important;
+}
+.rs-themed .text-slate-900,
+.rs-themed .text-slate-800,
+.rs-themed .text-gray-900,
+.rs-themed .text-gray-800 {
+  color: var(--rs-ink) !important;
+}
+.rs-themed .text-slate-700,
+.rs-themed .text-slate-600,
+.rs-themed .text-slate-500,
+.rs-themed .text-slate-400,
+.rs-themed .text-gray-700,
+.rs-themed .text-gray-600,
+.rs-themed .text-gray-500,
+.rs-themed .text-gray-400 {
+  color: var(--rs-muted) !important;
+}
+.rs-themed .text-teal-700,
+.rs-themed .text-teal-800,
+.rs-themed .text-teal-600,
+.rs-themed .text-teal-900 {
+  color: var(--rs-accent) !important;
+}
+.rs-themed .border-slate-100,
+.rs-themed .border-slate-200,
+.rs-themed .border-slate-200\/80,
+.rs-themed .border-slate-300,
+.rs-themed .border-gray-100,
+.rs-themed .border-gray-200,
+.rs-themed .border-teal-100,
+.rs-themed .border-teal-200 {
+  border-color: var(--rs-border) !important;
+}
+.rs-themed .divide-slate-100 > :not([hidden]) ~ :not([hidden]),
+.rs-themed .divide-slate-200 > :not([hidden]) ~ :not([hidden]) {
+  border-color: var(--rs-border) !important;
+}
+.rs-themed .ring-1.ring-slate-200,
+.rs-themed .ring-slate-200 {
+  --tw-ring-color: var(--rs-border) !important;
+}
+.rs-themed .ring-teal-100,
+.rs-themed .ring-teal-200 {
+  --tw-ring-color: color-mix(in srgb, var(--rs-accent) 28%, transparent) !important;
+}
+.rs-themed .placeholder\:text-slate-400::placeholder,
+.rs-themed .placeholder\:text-slate-500::placeholder,
+.rs-themed .placeholder\:text-gray-400::placeholder,
+.rs-themed input::placeholder,
+.rs-themed textarea::placeholder {
+  color: color-mix(in srgb, var(--rs-muted) 82%, var(--rs-border)) !important;
+  opacity: 1;
+}
+.rs-themed input:not([type='checkbox']):not([type='radio']):not([type='range']),
+.rs-themed select,
+.rs-themed textarea {
+  background-color: var(--rs-surface);
+  color: var(--rs-ink);
+  border-color: var(--rs-border);
+}
+.rs-themed select option {
+  background-color: var(--rs-surface);
+  color: var(--rs-ink);
+}
+/* Accent-filled controls that still use text-white */
+.rs-themed .bg-brand.text-white,
+.rs-themed a.bg-brand,
+.rs-themed button.bg-brand {
+  color: var(--rs-on-accent);
+}
+.rs-themed .bg-teal-600.text-white,
+.rs-themed .bg-teal-700.text-white,
+.rs-themed .bg-teal-800.text-white {
+  color: var(--rs-on-accent) !important;
+}
+
+/* Themed top chrome — never force light-surface ink onto dark header fields */
+.rs-themed .rs-topbar input.rs-on-header-field,
+.rs-themed .rs-topbar input.rs-on-header-field:focus {
+  background-color: color-mix(in srgb, var(--rs-header-ink) 16%, transparent) !important;
+  color: var(--rs-header-ink) !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+.rs-themed .rs-topbar input.rs-on-header-field::placeholder {
+  color: color-mix(in srgb, var(--rs-header-ink) 72%, transparent) !important;
+  opacity: 1 !important;
+}
+
+/* Readable secondary text hierarchy + hovers across all dashboard views */
+.rs-themed a.text-teal-700:hover,
+.rs-themed a.text-brand:hover,
+.rs-themed .hover\:text-teal-900:hover {
+  color: var(--rs-accent-hover) !important;
+}
+.rs-themed tr:hover,
+.rs-themed .hover\:bg-slate-50\/80:hover {
+  background-color: var(--rs-surface-2) !important;
+}
+.rs-themed button:not(:disabled):hover.rs-hover-soft,
+.rs-themed a.rs-hover-soft:hover {
+  background-color: var(--rs-surface-2);
+}
+.rs-themed .text-slate-300 {
+  color: color-mix(in srgb, var(--rs-muted) 55%, var(--rs-border)) !important;
+}
+
+/* Focus rings follow accent */
+.rs-themed *:focus-visible {
+  outline-color: color-mix(in srgb, var(--rs-accent) 55%, transparent);
+}
+
+@layer utilities {
+  .hero-delay-1 {
+    animation-delay: 0.12s;
+  }
+  .hero-delay-2 {
+    animation-delay: 0.24s;
+  }
+  .hero-delay-3 {
+    animation-delay: 0.36s;
+  }
+  .hero-delay-4 {
+    animation-delay: 0.48s;
+  }
+  .reveal-hidden {
+    opacity: 0;
+    transform: translateY(28px);
+  }
+  .reveal-visible {
+    animation: revealUp 0.75s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  }
+  .reveal-scale-hidden {
+    opacity: 0;
+    transform: translateY(16px) scale(0.97);
+  }
+  .reveal-scale-visible {
+    animation: revealScale 0.75s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  }
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  /* Landing micro-interactions */
+  .rs-nav-link {
+    position: relative;
+    transition: color 0.2s ease;
+  }
+  .rs-nav-link::after {
+    content: '';
+    position: absolute;
+    left: 0.75rem;
+    right: 0.75rem;
+    bottom: 0.35rem;
+    height: 1.5px;
+    border-radius: 999px;
+    background: var(--rs-accent);
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .rs-nav-link:hover {
+    color: var(--rs-accent) !important;
+  }
+  .rs-nav-link:hover::after {
+    transform: scaleX(1);
+  }
+
+  .rs-cta {
+    transition:
+      transform 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+      box-shadow 0.28s ease,
+      opacity 0.2s ease,
+      filter 0.2s ease;
+  }
+  .rs-cta:hover {
+    transform: translateY(-2px);
+    filter: brightness(1.03);
+  }
+  .rs-cta:active {
+    transform: translateY(0);
+  }
+
+  .rs-lift {
+    transition:
+      transform 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+      box-shadow 0.35s ease,
+      border-color 0.25s ease;
+  }
+  .rs-lift:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--rs-shadow);
+  }
+
+  .rs-link-slide {
+    position: relative;
+    display: inline-block;
+    transition: color 0.2s ease, transform 0.2s ease;
+  }
+  .rs-link-slide:hover {
+    transform: translateX(3px);
+  }
+
+  .rs-control {
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold transition;
+  }
+  .rs-control-sm {
+    @apply inline-flex min-h-9 items-center justify-center gap-2 rounded-xl px-3 text-sm font-semibold transition;
+  }
+  .rs-page {
+    @apply space-y-6 p-4 sm:p-6 lg:p-8;
+  }
+}
+
+@keyframes revealUp {
+  from {
+    opacity: 0;
+    transform: translateY(28px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes revealScale {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}

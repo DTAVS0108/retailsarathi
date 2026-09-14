@@ -1,0 +1,40 @@
+Tax Invoice
+e-Invoice
+IRN: bece4d66aee496ec68a766904837ec0d9c6e55a1078ad74f3f1b44bb08baeb3f
+Ack No.: 142620129978917
+Ack Date: 24-Apr-26
+
+Vakeel Battery Parts
+Kotdwar Kotwali Road, Najibabad, Bijnor, Uttar Pradesh
+Pin Code - 246763
+GSTIN/UIN: 09AFQPA3676K1ZY
+State Name: Uttar Pradesh, Code: 09
+E-Mail: vakeelbatterypartsnzbd@gmail.com
+
+Invoice No.: 25-26/374
+Dated: 24-Apr-26
+
+Buyer (Bill to)
+M/S TYAGI ELECTRIC WORKS
+GULABI MARKET SILARA ROAD CHANDPUR
+GSTIN/UIN: 09ASWPK4296J1ZR
+State Name: Uttar Pradesh, Code: 09
+
+SI No.  Description of Goods   HSN/SAC   Quantity   Rate (Incl of Tax)  Rate       per  Disc. %  Amount
+1       ED22036TT 200AH        85072000  10 PCS     14700.00            12457.63   PCS  2%       122084.77
+2       ED16536TT 150AH        85072000  5 PCS      11100.00            9406.78    PCS  2%       46093.22
+
+                                                          168177.99
+CGST SALE @ 9%                                            15136.02
+SGST SALE @ 9%                                            15136.02
+Less : ROUND OFF (-)                                      0.03
+Total                                      15 PCS         ₹ 198450.00
+
+HSN/SAC 85072000 Taxable Value 168177.99 CGST 15136.02 SGST 15136.02 Total Tax 30272.04
+
+Company's Bank Details
+Bank Name: AXIS BANK A/C
+A/c No.: 925030044936661
+Branch & IFS Code: NAJIBABAD & UTIB0001059
+for Vakeel Battery Parts
+Authorised Signatory

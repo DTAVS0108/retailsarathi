@@ -1,0 +1,1 @@
+"use strict";const e=require("electron");e.contextBridge.exposeInMainWorld("rsPrintPreview",{print:()=>e.ipcRenderer.invoke("print:preview-do-print"),printDirect:()=>e.ipcRenderer.invoke("print:preview-print-direct"),savePdf:()=>e.ipcRenderer.invoke("print:preview-save-pdf"),close:()=>e.ipcRenderer.invoke("print:preview-close")});

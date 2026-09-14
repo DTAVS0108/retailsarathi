@@ -1,0 +1,36 @@
+Tax Invoice
+Agarwal Cine World Private Limited
+Plot No. 7, Gala No. 27/28, Small Scale Industrial Development Premises CHS LTD, Near F M Banquet Hall, Goregaon (W), Mumbai - 400104, Maharashtra, India
+GSTIN/UIN: 27AARCA3938P1ZT
+State Name: Maharashtra, Code: 27
+Email: info@acwpl.com
+
+Invoice No.: ACWPL/1626
+Dated: 14-Dec-23
+Delivery Note: 1732/23-24
+Buyer's Order No.: 1732/23-24
+Dispatched through: Transport
+Destination: Chitra Studio
+
+Buyer (Bill to)
+Maddock Films Pvt Ltd (Stree 2)
+A/4, Jaisingh House, Ground Floor, West Avenue Road, Behind Kotak Mahindra Bank, Off Link Road, Santacruz (W), Mumbai, Maharashtra - 400054, India
+GSTIN/UIN: 27AADCD6488P1ZT
+State Name: Maharashtra, Code: 27
+
+SI No.  Description of Goods and Services                                      HSN/SAC   Quantity     Rate     Amount
+1       Hp Digital Vinyl Print with Matt Lam Past on 5mm Sb                    48211010  32.00 SQFT   255.00   8160.00
+2       Standy with Digital Star Flex Print                                    392112    10.00 pc     2100.00  21000.00
+3       Digital Normal Matt Flex Print                                         48211010  378.00 SQFT  10.00    3780.00
+        Transportation Charges                                                 996519               1800.00
+
+                                                         34740.00
+Output CGST @9 %                                         3126.60
+Output SGST @9 %                                         3126.60
+Round Off (-)                                              0.20
+Total                                                   ₹ 40993.00
+
+Company's Bank Details
+Bank Name: Kotak Bank
+A/c No.: 9993339999
+IFS Code: KKBK0001413

@@ -1,0 +1,12 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs",
+  "installCommand": "npm ci",
+  "buildCommand": "npm run build -w @retail-sarathi/types && npm run build -w @retail-sarathi/gst-engine && npm run build -w @retail-sarathi/ui && npm run build -w @retail-sarathi/web",
+  "outputDirectory": "apps/web/.next",
+  "env": {
+    "API_PROXY_TARGET": "https://api-production-167c5.up.railway.app",
+    "NEXT_PUBLIC_API_ORIGIN": "https://api-production-167c5.up.railway.app",
+    "NEXT_PUBLIC_SITE_URL": "https://retailsarathi-web.vercel.app"
+  }
+}

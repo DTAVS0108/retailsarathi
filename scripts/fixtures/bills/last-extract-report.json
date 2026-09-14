@@ -1,0 +1,277 @@
+{
+  "passed": 8,
+  "failed": 0,
+  "results": [
+    {
+      "file": "demo-supplier-invoice.txt",
+      "ok": true,
+      "fails": [],
+      "parse": {
+        "supplierName": "PowerHub Distributors",
+        "invoiceNumber": "PH/2026-27/0142",
+        "invoiceDate": "18 Jul 2026",
+        "gstin": "07AAACP1234A1Z5",
+        "linesTotal": 5,
+        "linesMatched": 4,
+        "lines": [
+          {
+            "name": "Battery Terminal Cable Set Heavy",
+            "qty": 10,
+            "rate": 180,
+            "hsn": "8544"
+          },
+          {
+            "name": "V-Guard VG 500 Stabilizer",
+            "qty": 5,
+            "rate": 2100,
+            "hsn": "8504"
+          },
+          {
+            "name": "Eastman EM150 Tubular Battery 150Ah",
+            "qty": 4,
+            "rate": 10500,
+            "hsn": "8507"
+          },
+          {
+            "name": "Luminous Zelio 1100 Pure Sine Wave Inverter",
+            "qty": 3,
+            "rate": 5800,
+            "hsn": "8504"
+          },
+          {
+            "name": "Exide InvaMaster 150Ah Tubular Battery",
+            "qty": 2,
+            "rate": 11800,
+            "hsn": "8507"
+          }
+        ]
+      },
+      "uploadLines": 5,
+      "uploadOk": true
+    },
+    {
+      "file": "bills/01-slno-mobile-gst.txt",
+      "ok": true,
+      "fails": [],
+      "parse": {
+        "supplierName": "Shree Mobile Distributors",
+        "invoiceNumber": "SMD/2026-27/0881",
+        "invoiceDate": "15 Jul 2026",
+        "gstin": "24AABCS1429B1ZK",
+        "linesTotal": 4,
+        "linesMatched": 1,
+        "lines": [
+          {
+            "name": "Spigen Tough Armor Case Universal",
+            "qty": 20,
+            "rate": 149,
+            "hsn": "3926"
+          },
+          {
+            "name": "Mi 33W SonicCharge Fast Charger",
+            "qty": 10,
+            "rate": 599,
+            "hsn": "8504"
+          },
+          {
+            "name": "Boat Airdopes 141 TWS Earbuds",
+            "qty": 5,
+            "rate": 999,
+            "hsn": "8518"
+          },
+          {
+            "name": "Samsung Galaxy A15 128GB Blue",
+            "qty": 2,
+            "rate": 14500,
+            "hsn": "8517"
+          }
+        ]
+      },
+      "uploadLines": 4,
+      "uploadOk": true
+    },
+    {
+      "file": "bills/02-pipe-battery.txt",
+      "ok": true,
+      "fails": [],
+      "parse": {
+        "supplierName": "PowerCell Traders",
+        "invoiceNumber": "PCT-INV-4521",
+        "invoiceDate": "12 Jun 2026",
+        "gstin": "27AABCT1332L1ZV",
+        "linesTotal": 4,
+        "linesMatched": 4,
+        "lines": [
+          {
+            "name": "V-Guard VG 400 Stabilizer",
+            "qty": 6,
+            "rate": 1890,
+            "hsn": "8504"
+          },
+          {
+            "name": "Exide InvaMaster 150Ah Tubular",
+            "qty": 4,
+            "rate": 11250,
+            "hsn": "8507"
+          },
+          {
+            "name": "Amaron FLO 150Ah Tall Tubular",
+            "qty": 3,
+            "rate": 10800,
+            "hsn": "8507"
+          },
+          {
+            "name": "Luminous Zelio+ 1100 VA Inverter",
+            "qty": 2,
+            "rate": 6250,
+            "hsn": "8504"
+          }
+        ]
+      },
+      "uploadLines": 4,
+      "uploadOk": true
+    },
+    {
+      "file": "bills/04-ocr-noisy.txt",
+      "ok": true,
+      "fails": [],
+      "parse": {
+        "supplierName": "TechGuru Wholesale",
+        "invoiceNumber": "TG/24-25/903",
+        "invoiceDate": "03 Aug 2026",
+        "gstin": "09AABCT1332L1ZV",
+        "linesTotal": 3,
+        "linesMatched": 0,
+        "lines": [
+          {
+            "name": "Havells Ceiling Fan 1200mm",
+            "qty": 5,
+            "rate": 1850,
+            "hsn": "8414"
+          },
+          {
+            "name": "JBL Go 3 Portable Speaker",
+            "qty": 4,
+            "rate": 2799,
+            "hsn": "8518"
+          },
+          {
+            "name": "Samsung 43 inch Crystal LED TV",
+            "qty": 1,
+            "rate": 28500,
+            "hsn": "8528"
+          }
+        ]
+      },
+      "uploadLines": 3,
+      "uploadOk": true
+    },
+    {
+      "file": "bills/03-csv-simple.csv",
+      "ok": true,
+      "fails": [],
+      "parse": {
+        "linesTotal": 3,
+        "linesMatched": 3,
+        "lines": [
+          {
+            "name": "V-Guard Stabilizer 500VA",
+            "qty": 3,
+            "rate": 2100,
+            "hsn": "8504"
+          },
+          {
+            "name": "Exide Battery 150Ah Tubular",
+            "qty": 2,
+            "rate": 11800,
+            "hsn": "8507"
+          },
+          {
+            "name": "Luminous Inverter 1100VA",
+            "qty": 1,
+            "rate": 5800,
+            "hsn": "8504"
+          }
+        ]
+      },
+      "uploadLines": 3,
+      "uploadOk": true
+    },
+    {
+      "file": "bills/05-tab-units.txt",
+      "ok": true,
+      "fails": [],
+      "parse": {
+        "supplierName": "City Care Parts",
+        "invoiceNumber": "CC/778",
+        "invoiceDate": "10 Jul 2026",
+        "gstin": "23AAACP9999A1Z9",
+        "linesTotal": 3,
+        "linesMatched": 1,
+        "lines": [
+          {
+            "name": "Battery Terminal Cable Set Heavy",
+            "qty": 12,
+            "rate": 175,
+            "hsn": "8544"
+          },
+          {
+            "name": "Microtek UPS EB 700",
+            "qty": 3,
+            "rate": 3900,
+            "hsn": "8504"
+          },
+          {
+            "name": "SF Sonic Digi 100 SMF Battery",
+            "qty": 2,
+            "rate": 8200,
+            "hsn": "8507"
+          }
+        ]
+      },
+      "uploadLines": 3,
+      "uploadOk": true
+    },
+    {
+      "file": "bills/06-discount-column.txt",
+      "ok": true,
+      "fails": [],
+      "parse": {
+        "supplierName": "Digital Hub India",
+        "invoiceNumber": "DH/2026/331",
+        "invoiceDate": "09 Jul 2026",
+        "gstin": "07AACCD1234F1Z8",
+        "linesTotal": 4,
+        "linesMatched": 0,
+        "lines": [
+          {
+            "name": "Portronics Konnect G15 Type-C Cable",
+            "qty": 15,
+            "rate": 199,
+            "hsn": "8544"
+          },
+          {
+            "name": "Realme Buds Air 5",
+            "qty": 4,
+            "rate": 4299,
+            "hsn": "8518"
+          },
+          {
+            "name": "OnePlus Nord CE 3 Lite 8GB",
+            "qty": 2,
+            "rate": 18999,
+            "hsn": "8517"
+          },
+          {
+            "name": "Apple iPhone 15 128GB Black",
+            "qty": 1,
+            "rate": 69900,
+            "hsn": "8517"
+          }
+        ]
+      },
+      "uploadLines": 4,
+      "uploadOk": true
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "name": "retail-sarathi",
+  "version": "0.1.0",
+  "private": true,
+  "description": "RetailSarathi — offline-first retail management for Indian electronics shops",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "db:migrate": "npm run db:migrate -w @retail-sarathi/api",
+    "db:seed": "npm run db:seed -w @retail-sarathi/api",
+    "dev:api": "npm run dev -w @retail-sarathi/api",
+    "dev:web": "npm run dev -w @retail-sarathi/web",
+    "dev:desktop": "npm run dev -w @retail-sarathi/desktop"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.4",
+    "typescript": "^5.8.3"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "npm@10.9.3"
+}

@@ -1,0 +1,12 @@
+BILL OF SUPPLY
+City Care Parts
+GSTIN: 23AAACP9999A1Z9
+Bill No: CC/778
+Date: 2026-07-10
+
+Particulars	HSN	Qty	Unit	Rate	Amount
+Battery Terminal Cable Set Heavy	8544	12	pcs	175	2100
+SF Sonic Digi 100 SMF Battery	8507	2	nos	8200	16400
+Microtek UPS EB 700	8504	3	pcs	3900	11700
+
+Total Amount 30200

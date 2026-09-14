@@ -1,0 +1,72 @@
+{
+
+  "name": "@retail-sarathi/ui",
+
+  "version": "0.1.0",
+
+  "private": true,
+
+  "main": "./dist/index.js",
+
+  "types": "./dist/index.d.ts",
+
+  "exports": {
+
+    ".": {
+
+      "types": "./dist/index.d.ts",
+
+      "default": "./dist/index.js"
+
+    },
+
+    "./invoice-templates": {
+
+      "types": "./dist/invoice-templates.d.ts",
+
+      "default": "./dist/invoice-templates.js"
+
+    },
+
+    "./print": {
+
+      "types": "./dist/print.d.ts",
+
+      "default": "./dist/print.js"
+
+    }
+
+  },
+
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "generate:invoice-previews": "node ./scripts/generate-invoice-previews.cjs"
+  },
+
+  "dependencies": {
+
+    "@retail-sarathi/gst-engine": "*"
+
+  },
+
+  "peerDependencies": {
+
+    "react": "^19.0.0",
+
+    "react-dom": "^19.0.0"
+
+  },
+
+  "devDependencies": {
+
+    "@types/react": "^19.1.8",
+
+    "react": "^19.1.0",
+
+    "typescript": "^5.8.3"
+
+  }
+
+}
+

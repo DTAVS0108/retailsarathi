@@ -1,0 +1,4 @@
+Item,Qty,Rate,HSN
+Exide Battery 150Ah Tubular,2,11800,8507
+Luminous Inverter 1100VA,1,5800,8504
+V-Guard Stabilizer 500VA,3,2100,8504

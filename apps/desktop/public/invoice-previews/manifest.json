@@ -1,0 +1,55 @@
+{
+  "generatedAt": "2026-07-26T02:46:48.765Z",
+  "pathPattern": "/invoice-previews/{id}.png",
+  "mobileAssetPattern": "assets/invoice_previews/{id}.png",
+  "templates": [
+    {
+      "id": "classic",
+      "name": "Classic GST",
+      "previewImage": "/invoice-previews/classic.png",
+      "mobileAsset": "assets/invoice_previews/classic.png"
+    },
+    {
+      "id": "minimal",
+      "name": "Minimal Compliance",
+      "previewImage": "/invoice-previews/minimal.png",
+      "mobileAsset": "assets/invoice_previews/minimal.png"
+    },
+    {
+      "id": "modern",
+      "name": "Modern Pro",
+      "previewImage": "/invoice-previews/modern.png",
+      "mobileAsset": "assets/invoice_previews/modern.png"
+    },
+    {
+      "id": "gst-formal",
+      "name": "GST Formal",
+      "previewImage": "/invoice-previews/gst-formal.png",
+      "mobileAsset": "assets/invoice_previews/gst-formal.png"
+    },
+    {
+      "id": "retail-bold",
+      "name": "Retail Counter",
+      "previewImage": "/invoice-previews/retail-bold.png",
+      "mobileAsset": "assets/invoice_previews/retail-bold.png"
+    },
+    {
+      "id": "tally-einvoice",
+      "name": "Tally E-Invoice",
+      "previewImage": "/invoice-previews/tally-einvoice.png",
+      "mobileAsset": "assets/invoice_previews/tally-einvoice.png"
+    },
+    {
+      "id": "tally-standard",
+      "name": "Tally Standard",
+      "previewImage": "/invoice-previews/tally-standard.png",
+      "mobileAsset": "assets/invoice_previews/tally-standard.png"
+    },
+    {
+      "id": "goel-enterprise",
+      "name": "B2B Trade",
+      "previewImage": "/invoice-previews/goel-enterprise.png",
+      "mobileAsset": "assets/invoice_previews/goel-enterprise.png"
+    }
+  ]
+}

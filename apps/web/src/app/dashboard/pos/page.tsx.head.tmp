@@ -1,0 +1,908 @@
+'use client';
+import { AppLoader } from '@/app/_components/app-loader';
+
+import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { Button, Card, formatINR } from '@retail-sarathi/ui';
+import { calculateInvoice } from '@retail-sarathi/gst-engine';
+import { apiWithAuth } from '@/lib/helpers';
+import {
+  assertGstinOptional,
+  assertIndianPhone,
+  normalizeGstin,
+  stateCodeFromGstin,
+  INDIAN_STATE_OPTIONS,
+  parseAddressPayload,
+} from '@/lib/validators';
+import {
+  MessageBanner,
+  PageHeader,
+  formatDateTime,
+  inputClassName,
+  parseError,
+  selectClassName,
+  toNumber,
+} from '../_components/dashboard-ui';
+
+interface ProductSerial {
+  id: string;
+  serialNumber: string;
+  status?: string;
+}
+
+interface Product {
+  id: string;
+  sku: string;
+  barcode?: string | null;
+  name: string;
+  hsnCode: string;
+  salePrice: number;
+  gstRate: number;
+  stockQty: number;
+  trackSerial?: boolean;
+  serials?: ProductSerial[];
+}
+
+interface Customer {
+  id: string;
+  name: string;
+  phone: string;
+  gstin?: string | null;
+  address?: string | null;
+  addressLine2?: string | null;
+  city?: string | null;
+  pincode?: string | null;
+  country?: string | null;
+  stateCode?: string | null;
+  segment?: 'RETAIL' | 'DEALER' | 'DISTRIBUTOR' | 'CORPORATE';
+  creditLimit?: number;
+  outstandingBalance?: number;
+  loyaltyPoints?: number;
+}
+
+const SEGMENT_PRICE_TYPE: Record<string, string> = {
+  RETAIL: 'RETAIL',
+  DEALER: 'DEALER',
+  DISTRIBUTOR: 'DISTRIBUTOR',
+  CORPORATE: 'WHOLESALE',
+};
+
+interface CartLine {
+  key: string;
+  productId: string;
+  productName: string;
+  hsnCode: string;
+  quantity: number;
+  unitPrice: number;
+  gstRate: number;
+  discount: number;
+  trackSerial?: boolean;
+  serialNumbers: string[];
+}
+
+interface PaymentRow {
+  id: string;
+  method: (typeof PAYMENT_METHODS)[number];
+  amount: string;
+  reference: string;
+}
+
+interface HeldBill {
+  id: string;
+  invoiceNumber: string;
+  grandTotal: number;
+  createdAt: string;
+  customer?: { id?: string; name?: string | null; phone?: string | null } | null;
+  lines?: Array<{
+    productId?: string | null;
+    productName?: string;
+    hsnCode?: string;
+    quantity: number;
+    unitPrice?: number;
+    discount?: number;
+    gstRate?: number;
+    serialNumbers?: string[];
+  }>;
+  notes?: string | null;
+}
+
+interface PosDraft {
+  customer?: { name?: string; phone?: string; gstin?: string };
+  customerId?: string;
+  lines?: Array<{
+    productId?: string | null;
+    productName?: string;
+    quantity: number;
+    unitPrice?: number;
+  }>;
+  paymentHint?: string;
+  notes?: string;
+}
+
+const PAYMENT_METHODS = ['CASH', 'UPI', 'CARD', 'CREDIT', 'BANK_TRANSFER'] as const;
+
+function newPaymentRow(amount = ''): PaymentRow {
+  return {
+    id: Math.random().toString(36).slice(2),
+    method: 'CASH',
+    amount,
+    reference: '',
+  };
+}
+
+export default function PosPage() {
+  const router = useRouter();
+  const [products, setProducts] = useState<Product[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [sellerState, setSellerState] = useState('27');
+  const [cart, setCart] = useState<CartLine[]>([]);
+  const [barcodeInput, setBarcodeInput] = useState('');
+  const [productQuery, setProductQuery] = useState('');
+  const [customerId, setCustomerId] = useState('');
+  const [custName, setCustName] = useState('');
+  const [custPhone, setCustPhone] = useState('');
+  const [custGstin, setCustGstin] = useState('');
+  const [custAddress, setCustAddress] = useState('');
+  const [custAddressLine2, setCustAddressLine2] = useState('');
+  const [custCity, setCustCity] = useState('');
+  const [custPincode, setCustPincode] = useState('');
+  const [custStateCode, setCustStateCode] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [payments, setPayments] = useState<PaymentRow[]>([newPaymentRow()]);
+  const [loyaltyRedeem, setLoyaltyRedeem] = useState('');
+  const [notes, setNotes] = useState('');
+  const [heldBills, setHeldBills] = useState<HeldBill[]>([]);
+  const [heldInvoiceId, setHeldInvoiceId] = useState<string | null>(null);
+  const [whatsappLink, setWhatsappLink] = useState<string | null>(null);
+  const [whatsappNote, setWhatsappNote] = useState('');
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [serialPicker, setSerialPicker] = useState<{
+    product: Product;
+    need: number;
+    selected: string[];
+    onDone: (serials: string[] | null) => void;
+  } | null>(null);
+  const [customerQuery, setCustomerQuery] = useState('');
+
+  async function sendWhatsApp(invoiceId: string) {
+    try {
+      const res = await apiWithAuth<{
+        sent?: boolean;
+        mode?: string;
+        shareUrl?: string;
+        note?: string;
+        reason?: string;
+        error?: string;
+      }>(`/invoices/${invoiceId}/whatsapp`, { method: 'POST' });
+      if (res.shareUrl) setWhatsappLink(res.shareUrl);
+      if (res.sent) {
+        setWhatsappNote('WhatsApp bill sent via API.');
+      } else {
+        setWhatsappNote(res.error || res.reason || res.note || 'WhatsApp share link ready.');
+      }
+    } catch (e) {
+      setWhatsappNote(parseError(e));
+    }
+  }
+
+  async function loadHeldBills() {
+    const res = await apiWithAuth<{ items: HeldBill[] }>('/invoices?status=DRAFT&pageSize=50');
+    setHeldBills(res.items);
+  }
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const [profile, prodRes, custRes] = await Promise.all([
+          apiWithAuth<{ stateCode: string }>('/tenants/profile'),
+          apiWithAuth<{ items: Product[] }>('/products'),
+          apiWithAuth<Customer[]>('/customers'),
+        ]);
+        setSellerState(profile.stateCode);
+        setProducts(prodRes.items);
+        setCustomers(custRes);
+        await loadHeldBills();
+
+        const raw = sessionStorage.getItem('posDraft');
+        if (raw) {
+          sessionStorage.removeItem('posDraft');
+          const draft: PosDraft = JSON.parse(raw);
+          if (draft.customer) {
+            setCustName(draft.customer.name ?? '');
+            setCustPhone(draft.customer.phone ?? '');
+            setCustGstin(draft.customer.gstin ?? '');
+            setCustAddress((draft.customer as { address?: string }).address ?? '');
+          }
+          if (draft.customerId) setCustomerId(draft.customerId);
+          if (draft.notes) setNotes(draft.notes);
+          if (draft.lines?.length) {
+            const lines: CartLine[] = [];
+            for (const l of draft.lines) {
+              const p = prodRes.items.find((x) => x.id === l.productId);
+              if (p) {
+                lines.push({
+                  key: p.id,
+                  productId: p.id,
+                  productName: p.name,
+                  hsnCode: p.hsnCode,
+                  quantity: l.quantity || 1,
+                  unitPrice: l.unitPrice ?? Number(p.salePrice),
+                  gstRate: Number(p.gstRate),
+                  discount: 0,
+                  trackSerial: Boolean(p.trackSerial),
+                  serialNumbers: [],
+                });
+              }
+            }
+            setCart(lines);
+          }
+        }
+      } catch (e) {
+        setError(parseError(e));
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  const selectedCustomer = useMemo(
+    () => customers.find((c) => c.id === customerId),
+    [customerId, customers],
+  );
+
+  const buyerState = useMemo(() => {
+    if (selectedCustomer?.stateCode) return selectedCustomer.stateCode;
+    const fromGstin = stateCodeFromGstin(selectedCustomer?.gstin || custGstin);
+    if (fromGstin) return fromGstin;
+    return sellerState;
+  }, [selectedCustomer, custGstin, sellerState]);
+
+  const priceListType = useMemo(() => {
+    if (!customerId) return 'RETAIL';
+    return SEGMENT_PRICE_TYPE[selectedCustomer?.segment ?? 'RETAIL'] ?? 'RETAIL';
+  }, [customerId, selectedCustomer]);
+
+  const filteredProducts = useMemo(() => {
+    const q = productQuery.trim().toLowerCase();
+    const list = !q
+      ? products
+      : products.filter(
+          (p) =>
+            p.name.toLowerCase().includes(q) ||
+            p.sku.toLowerCase().includes(q) ||
+            (p.barcode && p.barcode.toLowerCase().includes(q)),
+        );
+    return list.slice(0, 20);
+  }, [products, productQuery]);
+
+  const filteredCustomers = useMemo(() => {
+    const q = customerQuery.trim().toLowerCase();
+    if (!q) return customers.slice(0, 40);
+    return customers
+      .filter(
+        (c) =>
+          c.name.toLowerCase().includes(q) ||
+          c.phone.includes(q) ||
+          (c.gstin && c.gstin.toLowerCase().includes(q)),
+      )
+      .slice(0, 30);
+  }, [customers, customerQuery]);
+
+  function lineAmount(l: CartLine) {
+    return calculateInvoice(
+      [
+        {
+          productId: l.productId,
+          productName: l.productName,
+          hsnCode: l.hsnCode,
+          quantity: l.quantity,
+          unitPrice: l.unitPrice,
+          discount: l.discount,
+          gstRate: l.gstRate,
+        },
+      ],
+      sellerState,
+      buyerState,
+    ).grandTotal;
+  }
+
+  async function resolveUnitPrice(productId: string, qty: number, fallback: number) {
+    if (priceListType === 'RETAIL') return fallback;
+    try {
+      const price = await apiWithAuth<number>(
+        `/wholesale/price?productId=${productId}&type=${priceListType}&qty=${qty}`,
+      );
+      return toNumber(price) || fallback;
+    } catch {
+      return fallback;
+    }
+  }
+
+  useEffect(() => {
+    if (!customerId || !cart.length) return;
+    void (async () => {
+      const repriced = await Promise.all(
+        cart.map(async (line) => ({
+          ...line,
+          unitPrice: await resolveUnitPrice(line.productId, line.quantity, line.unitPrice),
+        })),
+      );
+      setCart(repriced);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customerId, priceListType]);
+
+  const totals = useMemo(() => {
+    if (!cart.length) return null;
+    return calculateInvoice(
+      cart.map((l) => ({
+        productId: l.productId,
+        productName: l.productName,
+        hsnCode: l.hsnCode,
+        quantity: l.quantity,
+        unitPrice: l.unitPrice,
+        discount: l.discount,
+        gstRate: l.gstRate,
+      })),
+      sellerState,
+      buyerState,
+    );
+  }, [cart, sellerState, buyerState]);
+
+  const payableTotal = useMemo(() => {
+    if (!totals) return 0;
+    const redeem = Math.max(0, Math.floor(toNumber(loyaltyRedeem)));
+    return Math.max(0, Math.round((totals.grandTotal - redeem) * 100) / 100);
+  }, [totals, loyaltyRedeem]);
+
+  const paymentSum = useMemo(
+    () => payments.reduce((s, p) => s + toNumber(p.amount), 0),
+    [payments],
+  );
+
+  useEffect(() => {
+    if (!totals) return;
+    setPayments((prev) => {
+      if (prev.length === 1 && (!prev[0].amount || prev[0].amount === '0')) {
+        return [{ ...prev[0], amount: payableTotal ? String(payableTotal) : '' }];
+      }
+      return prev;
+    });
+  }, [payableTotal, totals]);
+
+  function stockFor(productId: string) {
+    return toNumber(products.find((p) => p.id === productId)?.stockQty);
+  }
+
+  function usedSerials(excludeKey?: string) {
+    const used = new Set<string>();
+    for (const line of cart) {
+      if (excludeKey && line.key === excludeKey) continue;
+      for (const sn of line.serialNumbers) used.add(sn);
+    }
+    return used;
+  }
+
+  function pickSerials(product: Product, need: number, preselected: string[] = []): Promise<string[] | null> {
+    return new Promise((resolve) => {
+      setSerialPicker({
+        product,
+        need,
+        selected: preselected.slice(0, need),
+        onDone: (serials) => {
+          setSerialPicker(null);
+          resolve(serials);
+        },
+      });
+    });
+  }
+
+  async function addProduct(p: Product, qty = 1) {
+    const available = toNumber(p.stockQty);
+    const already = cart.find((x) => x.productId === p.id)?.quantity ?? 0;
+    if (available <= 0) {
+      setError(`${p.name} is out of stock.`);
+      return;
+    }
+    if (already + qty > available) {
+      setError(`Only ${available} unit(s) of ${p.name} in stock (cart has ${already}).`);
+      return;
+    }
+    setError('');
+    const unitPrice = await resolveUnitPrice(p.id, already + qty, Number(p.salePrice));
+
+    if (p.trackSerial) {
+      const existing = cart.find((x) => x.productId === p.id);
+      const need = (existing?.quantity ?? 0) + qty;
+      const picked = await pickSerials(p, need, existing?.serialNumbers ?? []);
+      if (!picked) return;
+      setCart((prev) => {
+        const ex = prev.find((x) => x.productId === p.id);
+        if (ex) {
+          return prev.map((x) =>
+            x.productId === p.id
+              ? { ...x, quantity: need, unitPrice, serialNumbers: picked, trackSerial: true }
+              : x,
+          );
+        }
+        return [
+          ...prev,
+          {
+            key: p.id,
+            productId: p.id,
+            productName: p.name,
+            hsnCode: p.hsnCode,
+            quantity: need,
+            unitPrice,
+            gstRate: Number(p.gstRate),
+            discount: 0,
+            trackSerial: true,
+            serialNumbers: picked,
+          },
+        ];
+      });
+      return;
+    }
+
+    setCart((prev) => {
+      const existing = prev.find((x) => x.productId === p.id);
+      if (existing) {
+        return prev.map((x) =>
+          x.productId === p.id ? { ...x, quantity: x.quantity + qty, unitPrice } : x,
+        );
+      }
+      return [
+        ...prev,
+        {
+          key: p.id,
+          productId: p.id,
+          productName: p.name,
+          hsnCode: p.hsnCode,
+          quantity: qty,
+          unitPrice,
+          gstRate: Number(p.gstRate),
+          discount: 0,
+          trackSerial: false,
+          serialNumbers: [],
+        },
+      ];
+    });
+  }
+
+  function handleBarcodeSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const code = barcodeInput.trim();
+    if (!code) return;
+    const p =
+      products.find((x) => x.barcode === code) ||
+      products.find((x) => x.sku.toLowerCase() === code.toLowerCase());
+    if (!p) {
+      setError(`No product found for "${code}"`);
+      return;
+    }
+    void addProduct(p);
+    setBarcodeInput('');
+  }
+
+  function updateQty(key: string, delta: number) {
+    void (async () => {
+      const line = cart.find((x) => x.key === key);
+      if (!line) return;
+      const nextQty = line.quantity + delta;
+      if (nextQty <= 0) {
+        setCart((prev) => prev.filter((x) => x.key !== key));
+        return;
+      }
+      const available = stockFor(line.productId);
+      if (nextQty > available) {
+        setError(`Only ${available} unit(s) of ${line.productName} in stock.`);
+        return;
+      }
+      if (line.trackSerial) {
+        const product = products.find((p) => p.id === line.productId);
+        if (!product) return;
+        const picked = await pickSerials(product, nextQty, line.serialNumbers);
+        if (!picked) return;
+        setError('');
+        setCart((prev) =>
+          prev.map((x) => (x.key === key ? { ...x, quantity: nextQty, serialNumbers: picked } : x)),
+        );
+        return;
+      }
+      setError('');
+      setCart((prev) => prev.map((x) => (x.key === key ? { ...x, quantity: nextQty } : x)));
+    })();
+  }
+
+  function updateDiscount(key: string, discount: number) {
+    setCart((prev) =>
+      prev.map((x) => (x.key === key ? { ...x, discount: Math.max(0, discount) } : x)),
+    );
+  }
+
+  function validateCustomerFields(): { phone?: string; gstin?: string; stateCode?: string } {
+    const next: Record<string, string> = {};
+    let phone: string | undefined;
+    let gstin: string | undefined;
+    try {
+      phone = assertIndianPhone(custPhone, false);
+    } catch (e) {
+      next.phone = parseError(e);
+    }
+    try {
+      gstin = assertGstinOptional(custGstin);
+    } catch (e) {
+      next.gstin = parseError(e);
+    }
+    setFieldErrors(next);
+    if (Object.keys(next).length) {
+      throw new Error(Object.values(next).join(' '));
+    }
+    return { phone, gstin, stateCode: stateCodeFromGstin(gstin) };
+  }
+
+  async function ensureCustomer(): Promise<Customer | undefined> {
+    const addr = parseAddressPayload({
+      address: custAddress,
+      addressLine2: custAddressLine2,
+      city: custCity,
+      stateCode: custStateCode || stateCodeFromGstin(custGstin),
+      pincode: custPincode,
+      country: 'IN',
+    });
+
+    if (customerId) {
+      const { phone, gstin, stateCode } = validateCustomerFields();
+      const updated = await apiWithAuth<Customer>(`/customers/${customerId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          name: custName.trim() || undefined,
+          phone: phone || custPhone.trim() || undefined,
+          gstin: gstin ?? null,
+          stateCode: addr.stateCode || stateCode || null,
+          address: addr.address,
+          addressLine2: addr.addressLine2,
+          city: addr.city,
+          pincode: addr.pincode,
+          country: addr.country ?? 'IN',
+        }),
+      });
+      setCustomers((prev) => prev.map((c) => (c.id === updated.id ? { ...c, ...updated } : c)));
+      return updated;
+    }
+
+    const hasIdentity = Boolean(
+      custName.trim() || custPhone.trim() || custGstin.trim() || custAddress.trim() || custCity.trim(),
+    );
+    if (!hasIdentity) return undefined;
+
+    if (!custName.trim() && !custPhone.trim()) {
+      throw new Error('Enter customer name or phone, or leave blank for walk-in.');
+    }
+
+    const { phone, gstin, stateCode } = validateCustomerFields();
+    if (custPhone.trim() && !phone) {
+      throw new Error('Enter a valid phone number for a new customer.');
+    }
+    if (!phone && !custName.trim()) {
+      throw new Error('Name is required when phone is blank.');
+    }
+    if (!phone) {
+      throw new Error('Phone is required to save a new customer (or leave all customer fields blank for walk-in).');
+    }
+
+    const created = await apiWithAuth<Customer>('/customers', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: custName.trim() || `Customer ${phone}`,
+        phone,
+        gstin,
+        stateCode: addr.stateCode || stateCode,
+        address: addr.address,
+        addressLine2: addr.addressLine2,
+        city: addr.city,
+        pincode: addr.pincode,
+        country: addr.country ?? 'IN',
+      }),
+    });
+    setCustomerId(created.id);
+    setCustomers((prev) => [created, ...prev]);
+    return created;
+  }
+
+  function creditPaymentTotal(rows: PaymentRow[] = payments) {
+    return rows
+      .filter((p) => p.method === 'CREDIT')
+      .reduce((s, p) => s + toNumber(p.amount), 0);
+  }
+
+  function assertStockForCart() {
+    for (const line of cart) {
+      const available = stockFor(line.productId);
+      if (line.quantity > available) {
+        throw new Error(
+          `Insufficient stock for ${line.productName}: need ${line.quantity}, have ${available}.`,
+        );
+      }
+    }
+  }
+
+  function buildLinesPayload() {
+    return cart.map((l) => ({
+      productId: l.productId,
+      productName: l.productName,
+      hsnCode: l.hsnCode,
+      quantity: l.quantity,
+      unitPrice: l.unitPrice,
+      discount: l.discount,
+      gstRate: l.gstRate,
+      serialNumbers: l.trackSerial ? l.serialNumbers : undefined,
+    }));
+  }
+
+  function assertSerialsForCart() {
+    for (const line of cart) {
+      if (!line.trackSerial) continue;
+      if (line.serialNumbers.length !== Math.floor(line.quantity)) {
+        throw new Error(
+          `${line.productName}: select ${Math.floor(line.quantity)} serial/IMEI number(s)`,
+        );
+      }
+    }
+  }
+
+  function buildPaymentsPayload(rows: PaymentRow[] = payments) {
+    return rows
+      .filter((p) => toNumber(p.amount) > 0)
+      .map((p) => ({
+        method: p.method,
+        amount: toNumber(p.amount),
+        reference: p.reference.trim() || undefined,
+      }));
+  }
+
+  function assertCreditOk(customer?: Customer | null, rows: PaymentRow[] = payments) {
+    const creditAmt = creditPaymentTotal(rows);
+    if (creditAmt <= 0) return;
+    if (!customer) {
+      throw new Error('Enter customer name and phone for CREDIT (udhaar) payment.');
+    }
+    const limit = toNumber(customer.creditLimit);
+    const outstanding = toNumber(customer.outstandingBalance);
+    if (limit > 0 && outstanding + creditAmt > limit) {
+      throw new Error(
+        `Credit limit ₹${limit.toLocaleString('en-IN')} exceeded (outstanding ₹${outstanding.toLocaleString('en-IN')} + bill).`,
+      );
+    }
+  }
+
+  function assertPaymentsMatch(rows: PaymentRow[] = payments) {
+    const sum = rows.reduce((s, p) => s + toNumber(p.amount), 0);
+    if (Math.abs(sum - payableTotal) > 0.05) {
+      throw new Error(
+        `Split payments (₹${sum.toFixed(2)}) must equal bill total (₹${payableTotal.toFixed(2)}).`,
+      );
+    }
+    if (!rows.some((p) => toNumber(p.amount) > 0)) {
+      throw new Error('Add at least one payment row with an amount.');
+    }
+  }
+
+  function resetCart() {
+    setCart([]);
+    setCustName('');
+    setCustPhone('');
+    setCustGstin('');
+    setCustAddress('');
+    setCustAddressLine2('');
+    setCustCity('');
+    setCustPincode('');
+    setCustStateCode('');
+    setCustomerId('');
+    setNotes('');
+    setLoyaltyRedeem('');
+    setPayments([newPaymentRow()]);
+    setFieldErrors({});
+    setHeldInvoiceId(null);
+  }
+
+  async function holdBill() {
+    if (!cart.length || !totals) {
+      setError('Add at least one item to hold.');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    setSuccess('');
+    setWhatsappLink(null);
+    try {
+      if (customerId && custGstin.trim()) {
+        assertGstinOptional(custGstin);
+      } else if (!customerId && (custName.trim() || custPhone.trim() || custGstin.trim())) {
+        validateCustomerFields();
+      }
+      const customer = await ensureCustomer();
+      assertSerialsForCart();
+      const invoice = await apiWithAuth<{ id: string; invoiceNumber: string }>('/invoices/hold', {
+        method: 'POST',
+        body: JSON.stringify({
+          customerId: customer?.id,
+          notes: notes || undefined,
+          lines: buildLinesPayload(),
+        }),
+      });
+      setSuccess(`Bill held: ${invoice.invoiceNumber}. Resume from held bills below.`);
+      resetCart();
+      await loadHeldBills();
+    } catch (e) {
+      setError(parseError(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function resumeHeldBill(bill: HeldBill) {
+    setHeldInvoiceId(bill.id);
+    setNotes(bill.notes ?? '');
+    const custId = bill.customer?.id;
+    if (custId) {
+      setCustomerId(custId);
+      const c = customers.find((x) => x.id === custId);
+      setCustName(c?.name ?? bill.customer?.name ?? '');
+      setCustPhone(c?.phone ?? bill.customer?.phone ?? '');
+      setCustGstin(c?.gstin ?? '');
+      setCustAddress(c?.address ?? '');
+      setCustAddressLine2(c?.addressLine2 ?? '');
+      setCustCity(c?.city ?? '');
+      setCustPincode(c?.pincode ?? '');
+      setCustStateCode(c?.stateCode ?? stateCodeFromGstin(c?.gstin) ?? '');
+    } else {
+      setCustomerId('');
+      setCustName(bill.customer?.name ?? '');
+      setCustPhone(bill.customer?.phone ?? '');
+      setCustGstin('');
+      setCustAddress('');
+      setCustAddressLine2('');
+      setCustCity('');
+      setCustPincode('');
+      setCustStateCode('');
+    }
+    const lines: CartLine[] = [];
+    for (const l of bill.lines ?? []) {
+      const p = products.find((x) => x.id === l.productId);
+      if (p) {
+        lines.push({
+          key: `${bill.id}-${p.id}`,
+          productId: p.id,
+          productName: l.productName ?? p.name,
+          hsnCode: l.hsnCode ?? p.hsnCode,
+          quantity: toNumber(l.quantity) || 1,
+          unitPrice: toNumber(l.unitPrice) || Number(p.salePrice),
+          gstRate: toNumber(l.gstRate) || Number(p.gstRate),
+          discount: toNumber(l.discount),
+          trackSerial: Boolean(p.trackSerial),
+          serialNumbers: Array.isArray(l.serialNumbers) ? l.serialNumbers : [],
+        });
+      }
+    }
+    setCart(lines);
+    setSuccess(`Resumed held bill ${bill.invoiceNumber}.`);
+    setError('');
+    setWhatsappLink(null);
+  }
+
+  async function finalizeHeld(id: string) {
+    setSaving(true);
+    setError('');
+    setSuccess('');
+    try {
+      const invoice = await apiWithAuth<{ id: string; invoiceNumber: string; customer?: { phone?: string | null } | null; grandTotal: number }>(
+        `/invoices/${id}/finalize`,
+        { method: 'PATCH' },
+      );
+      setSuccess(`Finalized: ${invoice.invoiceNumber}`);
+      setWhatsappNote('');
+      await sendWhatsApp(invoice.id);
+      if (heldInvoiceId === id) resetCart();
+      await loadHeldBills();
+      setTimeout(() => router.push(`/dashboard/invoices/${invoice.id}?print=1`), 1500);
+    } catch (e) {
+      setError(parseError(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function saveBill(paymentOverride?: PaymentRow[]) {
+    if (!cart.length || !totals) {
+      setError('Add at least one item to the bill.');
+      return;
+    }
+    const payRows = paymentOverride ?? payments;
+    if (paymentOverride) setPayments(paymentOverride);
+    setSaving(true);
+    setError('');
+    setSuccess('');
+    setWhatsappLink(null);
+    try {
+      if (customerId && custGstin.trim()) {
+        assertGstinOptional(custGstin);
+      } else if (!customerId && (custName.trim() || custPhone.trim() || custGstin.trim())) {
+        validateCustomerFields();
+      }
+
+      assertStockForCart();
+      assertSerialsForCart();
+      assertPaymentsMatch(payRows);
+
+      const creditAmt = creditPaymentTotal(payRows);
+      if (creditAmt > 0 && !customerId && !custName.trim() && !custPhone.trim()) {
+        throw new Error('Enter customer name and phone for CREDIT (udhaar) payment.');
+      }
+
+      let customer = selectedCustomer;
+      const shouldEnsureCustomer =
+        creditAmt > 0 ||
+        Boolean(customerId) ||
+        Boolean(
+          custName.trim() ||
+            custPhone.trim() ||
+            custGstin.trim() ||
+            custAddress.trim() ||
+            custCity.trim(),
+        );
+      if (shouldEnsureCustomer) {
+        customer = (await ensureCustomer()) ?? customer;
+      }
+      if (creditAmt > 0) {
+        assertCreditOk(customer, payRows);
+      }
+
+      const redeem = Math.floor(toNumber(loyaltyRedeem));
+      if (redeem > 0 && !customer && !custPhone.trim()) {
+        throw new Error('Select a customer to redeem loyalty points.');
+      }
+      if (customer && redeem > toNumber(customer.loyaltyPoints)) {
+        throw new Error(`Only ${toNumber(customer.loyaltyPoints)} loyalty points available.`);
+      }
+
+      const cid = customer?.id;
+
+      if (heldInvoiceId) {
+        await apiWithAuth(`/invoices/${heldInvoiceId}/cancel`, { method: 'PATCH' });
+      }
+
+      const invoice = await apiWithAuth<{
+        id: string;
+        invoiceNumber: string;
+        grandTotal: number;
+        customer?: { phone?: string | null } | null;
+      }>('/invoices', {
+        method: 'POST',
+        body: JSON.stringify({
+          customerId: cid,
+          notes: notes || undefined,
+          lines: buildLinesPayload(),
+          payments: buildPaymentsPayload(payRows),
+          loyaltyPointsToRedeem: redeem > 0 ? redeem : undefined,
+          status: 'FINALIZED',
+        }),
+      });
+
+      setWhatsappNote('');
+      await sendWhatsApp(invoice.id);
+
+      setSuccess(`Bill saved: ${invoice.invoiceNumber}`);
+      resetCart();
+      await loadHeldBills();
+      setTimeout(() => router.push(`/dashboard/invoices/${invoice.id}?print=1`), whatsappLink ? 2500 : 1200);
+    } catch (e) {
+      setError(parseError(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+

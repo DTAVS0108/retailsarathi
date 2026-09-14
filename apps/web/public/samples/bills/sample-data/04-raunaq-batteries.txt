@@ -1,0 +1,51 @@
+Tax Invoice
+e-Invoice
+IRN: c3dcab54414a965983f6156e5f6acc44165623d084130eaeae53400080854de81
+Ack No.: 142620117743479
+Ack Date: 22-Apr-26
+
+M/s Raunaq Batteries
+Basta Road, Chandpur (Bijnor)
+GSTIN/UIN: 09ABKPH0005M1ZS
+State Name: Uttar Pradesh, Code: 09
+Contact: 9837024526
+E-Mail: raunaqbatteries@gmail.com
+
+Invoice No.: RB/2026-27/359
+Dated: 22-Apr-26
+
+Buyer (Bill to)
+Tyagi Electric Works
+GULABI MARKET, SILARA ROAD, CHANDPUR, Bijnor, Uttar Pradesh, 246725
+GSTIN/UIN: 09ASWPK4296J1ZR
+State Name: Uttar Pradesh, Code: 09
+Contact: 9411659592
+
+SI No.  Description of Goods                 GST Rate  Quantity   Rate          Amount
+1       ENERGY SAVER NEW 825 12V DG          18%       4 PCS      3950.00       13389.84
+        AK3280U0421D4VNWVV6
+        WT5280U0420PSX7CCU
+        AK3280U0421DTRWD6M
+        WT5280U0420PU5933T
+2       SUPER POWER NEW 900 12V DG           18%       4 PCS      4249.99       14406.76
+        26D291R0421T093214
+        26D291R0421T094163
+        26D291R0421T093223
+        RM5291R0411VTFF8AK
+3       SUPER POWER NEW 700 12V DG           18%       2 PCS      3580.00       6067.80
+        VM8291P04H1Q9PQN8N
+        26C291P04Z1N095727
+
+Total                                                   10 PCS                  33864.40
+CGST @9 %                                               3047.80
+SGST @9 %                                               3047.80
+Grand Total                                             ₹ 39960.00
+
+HSN/SAC 85044010
+Taxable Value: 33864.40
+Total Tax Amount: 6095.60
+
+Company's Bank Details
+Bank Name: AXIS BANK
+A/c No.: 923030033348387
+Branch & IFS Code: CHANDPUR & UTIB0004370

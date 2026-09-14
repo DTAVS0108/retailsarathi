@@ -1,0 +1,12 @@
+node_modules
+.git
+.turbo
+apps/api/uploads
+apps/desktop
+apps/mobile
+apps/desktop/release
+apps/mobile/build
+**/*.log
+coverage
+dist
+.next

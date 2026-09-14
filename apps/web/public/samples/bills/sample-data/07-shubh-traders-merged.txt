@@ -1,0 +1,53 @@
+TAX INVOICE
+e-Invoice
+ORIGINAL FOR RECIPIENT
+
+IRN: 3cb568717f3dfca365a149f765acaa76bbe4b1e100af9ef-fad58202dd1c27132
+Ack No.: 142620411352896
+Ack Date: 27-May-26
+
+SHUBH TRADERS 2026-27
+NEAR SARGAM THEATER, CHANDPUR
+GSTIN/UIN: 09AHDPA3364M1ZA
+State Name: Uttar Pradesh, Code: 09
+
+Buyer (Bill to)
+M/s Tyagi Electric Works
+Gulabi Market, Silara Road, Chandpur, Bijnor
+GSTIN/UIN: 09ASWPK4296J1ZR
+State Name: Uttar Pradesh, Code: 09
+Place of Supply: Uttar Pradesh
+
+Invoice No.: 358
+Dated: 27-May-26
+e-Way Bill No.: 441730045950
+Motor Vehicle No.: UP23AT5449
+
+SI No.  Description of Goods              HSN/SAC   GST Rate  Quantity   Rate      per   Amount
+1       LUM 12V150AH ILTJ18060 FNSD BTY   85072000  18%       5.00 PCS   10762.71 PCS   53813.55
+2       LUMINOUS EVO-D 700/12V            85044010  18%       3.00 PCS   3389.83  PCS   10169.49
+3       LUMINOUS EVO-D 800/12V            85044010  18%       3.00 PCS   3559.32  PCS   10677.96
+4       LUMINOUS EVO-D 900/12V            85044010  18%       3.00 PCS   3771.19  PCS   11313.57
+5       LUMINOUS EVO-D 1050/12V           85044010  18%       3.00 PCS   4110.17  PCS   12330.51
+6       LUMINOUS EVO-D 1650/24V           85044010  18%       1.00 PCS   5932.20  PCS   5932.20
+
+                                                          104237.28
+OUTPUT CGST @9 %                                            9381.36
+
+----- PAGE 2 -----
+
+Tax Invoice(Page 2)
+OUTPUT SGST @9 %                                            9381.36
+Total                                                   18.00 PCS            ₹ 123000.00
+Grand Total: ₹ 123000.00
+Taxable Value: 104237.28
+
+HSN/SAC    Taxable Value   Central Tax   State Tax   Total Tax Amount
+85072000   53813.55        4843.22       4843.22     9686.44
+85044010   50423.73        4538.14       4538.14     9076.28
+Total      104237.28       9381.36       9381.36     18762.72
+
+Company's Bank Details
+Bank Name: PUNJAB NATIONAL BANK C/C
+A/c No.: 0096008700031334
+Branch & IFS Code: CHANDPUR & PUNB0009600

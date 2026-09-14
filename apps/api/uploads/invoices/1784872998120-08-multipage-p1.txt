@@ -1,0 +1,12 @@
+TAX INVOICE
+Supplier: MultiPage Traders
+GSTIN: 27AABCM1234D1Z5
+Invoice No: MP-7781
+Date: 12/07/2026
+
+Sl.No Item                    HSN     Qty    Rate     Amount
+1     Exide 150Ah Tubular     8507    4      12500    50000
+2     Luminous Zelio 1100     8504    2      7800     15600
+3     Microtek UPS EB 900     8504    3      4200     12600
+
+(Continued on page 2)

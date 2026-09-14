@@ -1,0 +1,146 @@
+{
+  "passed": 7,
+  "failed": 0,
+  "results": [
+    {
+      "file": "01-battery-trading.txt",
+      "ok": true,
+      "fails": [],
+      "header": {
+        "supplier": "Battery Trading Management",
+        "gstin": "24AABCT1332L1ZV",
+        "invoice": "18",
+        "customer": "Suraj Kapadiya",
+        "total": 5545.2,
+        "taxable": 4440,
+        "cgst": 552.6,
+        "sgst": 552.6
+      },
+      "lines": [
+        "BL 56 Battery x1@1350 hsn=4568",
+        "HI 57 Amaron x1@2500 hsn=4562",
+        "BL 56 Battery x1@1250 hsn=4568"
+      ]
+    },
+    {
+      "file": "02-agarwal-cine.txt",
+      "ok": true,
+      "fails": [],
+      "header": {
+        "supplier": "Agarwal Cine World Private Limited",
+        "gstin": "27AARCA3938P1ZT",
+        "invoice": "ACWPL/1626",
+        "customer": "Maddock Films Pvt Ltd",
+        "total": 40993,
+        "taxable": 34740,
+        "cgst": 3126.6,
+        "sgst": 3126.6
+      },
+      "lines": [
+        "Hp Digital Vinyl Print with Matt Lam Past on 5mm Sb x32@255 hsn=48211010",
+        "Digital Normal Matt Flex Print x378@10 hsn=48211010",
+        "Standy with Digital Star Flex Print x10@2100 hsn=392112"
+      ]
+    },
+    {
+      "file": "03-techguru-plus.txt",
+      "ok": true,
+      "fails": [],
+      "header": {
+        "supplier": "TechGuruPlus",
+        "gstin": "07PTAFF9867H1Z4",
+        "invoice": "3567/2017-18",
+        "customer": "NAZIM KHAN",
+        "total": 67024,
+        "taxable": 56800,
+        "cgst": 6816,
+        "sgst": 3408
+      },
+      "lines": [
+        "LED LIGHTS x50@500 hsn=85013410",
+        "Bulbs x20@2300 hsn=85013420"
+      ]
+    },
+    {
+      "file": "04-raunaq-batteries.txt",
+      "ok": true,
+      "fails": [],
+      "header": {
+        "supplier": "M/s Raunaq Batteries",
+        "gstin": "09ABKPH0005M1ZS",
+        "invoice": "RB/2026-27/359",
+        "customer": "Tyagi Electric Works",
+        "total": 39960,
+        "taxable": 33864.4,
+        "cgst": 3047.8,
+        "sgst": 3047.8
+      },
+      "lines": [
+        "ENERGY SAVER NEW 825 12V DG x4@3347.46 hsn=8504",
+        "SUPER POWER NEW 900 12V DG x4@3601.69 hsn=8504",
+        "SUPER POWER NEW 700 12V DG x2@3033.9 hsn=8504"
+      ]
+    },
+    {
+      "file": "05-vakeel-battery.txt",
+      "ok": true,
+      "fails": [],
+      "header": {
+        "supplier": "Vakeel Battery",
+        "gstin": "09AFQPA3676K1ZY",
+        "invoice": "25-26/374",
+        "customer": "M/S TYAGI ELECTRIC WORKS",
+        "total": 198450,
+        "taxable": 168177.99,
+        "cgst": 15136.02,
+        "sgst": 15136.02
+      },
+      "lines": [
+        "ED22036TT 200AH x10@12457.63 hsn=85072000",
+        "ED16536TT 150AH x5@9406.78 hsn=85072000"
+      ]
+    },
+    {
+      "file": "06-goel-enterprises.txt",
+      "ok": true,
+      "fails": [],
+      "header": {
+        "supplier": "M/S GOEL ENTERPRISES",
+        "gstin": "09ARDPG9739J1ZA",
+        "invoice": "67",
+        "customer": "TYAGI ELECTRIC WORKS",
+        "total": 182250,
+        "taxable": 154449.16,
+        "cgst": 13900.42,
+        "sgst": 13900.42
+      },
+      "lines": [
+        "BATTERY LUMINOUS ILTT 18060 TT x10@10550.85 hsn=85072000",
+        "BATTERY LUMINOUS ILTT 18148 12V 15 x5@9788.14 hsn=85072000"
+      ]
+    },
+    {
+      "file": "07-shubh-traders-merged.txt",
+      "ok": true,
+      "fails": [],
+      "header": {
+        "supplier": "SHUBH TRADERS 2026-27",
+        "gstin": "09AHDPA3364M1ZA",
+        "invoice": "358",
+        "customer": "M/s Tyagi Electric Works",
+        "total": 123000,
+        "taxable": 104237.28,
+        "cgst": 9381.36,
+        "sgst": 9381.36
+      },
+      "lines": [
+        "LUM 12V150AH ILTT 18060 FNSD BTY x5@10762.71 hsn=85072000",
+        "LUMINOUS EVO-D 700/12V x3@3389.83 hsn=85044010",
+        "LUMINOUS EVO-D 800/12V x3@3559.32 hsn=85044010",
+        "LUMINOUS EVO-D 900/12V x3@3771.19 hsn=85044010",
+        "LUMINOUS EVO-D 1050/12V x3@4110.17 hsn=85044010",
+        "LUMINOUS EVO-D 1650/24V x1@5932.2 hsn=85044010"
+      ]
+    }
+  ]
+}

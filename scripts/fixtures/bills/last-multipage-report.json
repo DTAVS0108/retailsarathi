@@ -1,0 +1,63 @@
+{
+  "passed": 1,
+  "failed": 0,
+  "fails": [],
+  "steps": [
+    {
+      "step": "1.parse-page1-only",
+      "ok": true,
+      "invoice": "MP-7781",
+      "supplier": "MultiPage Traders",
+      "lines": [
+        "Luminous Zelio x8504@2",
+        "Exide 150Ah Tubular x4@12500",
+        "Microtek UPS EB 900 x3@4200"
+      ]
+    },
+    {
+      "step": "2.parse-page2-only",
+      "ok": true,
+      "lines": [
+        "Sukam Shine x8504@1",
+        "Battery Water 5L x10@80",
+        "Amaron Flo 150Ah x2@11200"
+      ]
+    },
+    {
+      "step": "3.merge-markers",
+      "ok": true,
+      "chars": 741,
+      "hasPage1": true,
+      "hasPage2": true
+    },
+    {
+      "step": "4.parse-merged-full-bill",
+      "ok": true,
+      "invoice": "MP-7781",
+      "supplier": "MultiPage Traders",
+      "gstin": "27AABCM1234D1Z5",
+      "lineCount": 6,
+      "lines": [
+        "Luminous Zelio x8504@2",
+        "Sukam Shine x8504@1",
+        "Battery Water 5L x10@80",
+        "Exide 150Ah Tubular x4@12500",
+        "Microtek UPS EB 900 x3@4200",
+        "Amaron Flo 150Ah x2@11200"
+      ]
+    },
+    {
+      "step": "5.upload-page1-then-merged",
+      "ok": true,
+      "page1UploadLines": 3,
+      "mergedUploadLines": 6
+    },
+    {
+      "step": "6.page1-not-full-bill",
+      "ok": true,
+      "page1Lines": 3,
+      "mergedLines": 6
+    }
+  ],
+  "mergedPreview": "----- PAGE 1 -----\n\nTAX INVOICE\nSupplier: MultiPage Traders\nGSTIN: 27AABCM1234D1Z5\nInvoice No: MP-7781\nDate: 12/07/2026\n\nSl.No Item                    HSN     Qty    Rate     Amount\n1     Exide 150Ah Tubular     8507    4      12500    50000\n2     Luminous Zelio 1100     8504    2      7800     15600\n3     Microtek UPS EB 900     8504    3      4200     12600\n\n(Continued on page 2)\n\n----- PAGE 2 -"
+}

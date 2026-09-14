@@ -1,0 +1,72 @@
+{
+  "passed": 1,
+  "failed": 0,
+  "fails": [],
+  "steps": [
+    {
+      "step": "1.parse-page1",
+      "ok": true,
+      "lines": [
+        "LUM 12V150AH ILTT 18060 FNSD BTY | hsn=85072000 | qty=5 | rate=10762.71",
+        "LUMINOUS EVO-D 700/12V | hsn=85044010 | qty=3 | rate=3389.83",
+        "LUMINOUS EVO-D 800/12V | hsn=85044010 | qty=3 | rate=3559.32",
+        "LUMINOUS EVO-D 900/12V | hsn=85044010 | qty=3 | rate=3771.19",
+        "LUMINOUS EVO-D 1050/12V | hsn=85044010 | qty=3 | rate=4110.17",
+        "LUMINOUS EVO-D 1650/24V | hsn=85044010 | qty=1 | rate=5932.2"
+      ],
+      "header": {
+        "supplier": "SHUBH TRADERS 2026-27",
+        "invoice": "358",
+        "gstin": "09AHDPA3364M1ZA"
+      }
+    },
+    {
+      "step": "2.parse-page2-tax-only",
+      "ok": true,
+      "lineCount": 0,
+      "lines": []
+    },
+    {
+      "step": "3.parse-merged",
+      "ok": true,
+      "lineCount": 6,
+      "lines": [
+        "LUM 12V150AH ILTT 18060 FNSD BTY | hsn=85072000 | qty=5 | rate=10762.71",
+        "LUMINOUS EVO-D 700/12V | hsn=85044010 | qty=3 | rate=3389.83",
+        "LUMINOUS EVO-D 800/12V | hsn=85044010 | qty=3 | rate=3559.32",
+        "LUMINOUS EVO-D 900/12V | hsn=85044010 | qty=3 | rate=3771.19",
+        "LUMINOUS EVO-D 1050/12V | hsn=85044010 | qty=3 | rate=4110.17",
+        "LUMINOUS EVO-D 1650/24V | hsn=85044010 | qty=1 | rate=5932.2"
+      ],
+      "invoice": "358",
+      "supplier": "SHUBH TRADERS 2026-27"
+    },
+    {
+      "step": "4.upload-p1-image+ocr-text",
+      "ok": true,
+      "lines": 6,
+      "needsOcr": false,
+      "uploadId": "d7097fb5-0b51-4955-a9bc-3492d3ea9aaa"
+    },
+    {
+      "step": "5.upload-p2-image+merged-text",
+      "ok": true,
+      "lines": 6,
+      "preview": [
+        "LUM 12V150AH ILTT 18060 FNSD BTY x5@10762.71",
+        "LUMINOUS EVO-D 700/12V x3@3389.83",
+        "LUMINOUS EVO-D 800/12V x3@3559.32",
+        "LUMINOUS EVO-D 900/12V x3@3771.19",
+        "LUMINOUS EVO-D 1050/12V x3@4110.17",
+        "LUMINOUS EVO-D 1650/24V x1@5932.2"
+      ]
+    },
+    {
+      "step": "6.upload-image-without-ocr",
+      "ok": true,
+      "needsOcr": true,
+      "message": "File saved but no text was readable. Use PDF/PNG/JPG upload with on-device OCR, or paste invoice text and Parse.",
+      "lines": 0
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+TAX 1NV0ICE
+TechGuru Wholesale
+GSTIN: 09 AABCT 1332 L1Z V
+INVOICE No: TG/24-25/903
+Dated: 03.Aug.2026
+
+Description of Goods HSN QTY RATE Amount
+Samsung 43 inch Crystal LED TV 8528 1 28,500 28,500
+JBL Go 3 Portable Speaker 8518 4 2,799 11,196
+Havells Ceiling Fan 1200mm 8414 5 1,850 9,250
+
+Taxable Value 48946
+Grand Total 57756.28

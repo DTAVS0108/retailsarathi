@@ -1,0 +1,46 @@
+TAX INVOICE
+GSTIN: 24AABCT1332L1ZV
+Battery Trading Management
+A/12, Shrenik Park, Opp. Jain Temple, Near Akota Stadium, Akota Dandiya Bazar, Vadodara, Gujarat
+Ph.: 0265-1234567, 9898989898
+Email: softwaremanan@gmail.com
+Terms: Credit
+
+Buyer (Bill to)
+Suraj Kapadiya
+AB-66, Roshni Park, Jamshedpur Road, Opp. Taj, Vadodara Gujarat
+Contact No.: 9898989898
+GSTIN: 24AABCS1429B1ZK
+
+Invoice No.: 18
+Dated: 06-05-2021
+Vehicle Reg No.: GJ06 9658
+Model No.: XUV Mahindra
+
+Sr. Product Details              HSN CODE  GST %  Qty  Rate   Unit  Total
+1   BL 56 Battery                4568      28     1    1350   Pcs.  1350
+    Make: Exide
+    Description: 1 Year Warranty
+    Serial No.: 12345698765432
+2   HI 57 Amaron                 4562      18     1    2500   Pcs.  2500
+    Make: Amaron
+    Description: 2 Year Warranty
+    Serial No.: 456
+3   BL 56 Battery                4568      28     1    1250   Pcs.  1250
+    Make: Exide
+    Description: 1 Year Warranty
+    Serial No.: 75412365845E45B
+
+Total Qty: 3
+Basic Amount: 5100.00
+Discount: -260
+Add: CGST: 552.60
+Add: SGST: 552.60
+Add: IGST: 0.00
+Old Battery: 400.00
+Total Amount: 5545.20
+
+Bank: State Bank Of India
+Branch: Urmi Society
+A/c No.: 30860782596
+IFS Code: SBIN0005684

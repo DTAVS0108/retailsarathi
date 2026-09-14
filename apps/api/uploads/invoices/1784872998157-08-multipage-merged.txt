@@ -1,0 +1,28 @@
+----- PAGE 1 -----
+
+TAX INVOICE
+Supplier: MultiPage Traders
+GSTIN: 27AABCM1234D1Z5
+Invoice No: MP-7781
+Date: 12/07/2026
+
+Sl.No Item                    HSN     Qty    Rate     Amount
+1     Exide 150Ah Tubular     8507    4      12500    50000
+2     Luminous Zelio 1100     8504    2      7800     15600
+3     Microtek UPS EB 900     8504    3      4200     12600
+
+(Continued on page 2)
+
+----- PAGE 2 -----
+
+Invoice No: MP-7781 (continued)
+
+Sl.No Item                    HSN     Qty    Rate     Amount
+4     Amaron Flo 150Ah        8507    2      11200    22400
+5     Sukam Shine 1500        8504    1      9500     9500
+6     Battery Water 5L        2805    10     80       800
+
+Taxable: 110900
+CGST 9%: 9981
+SGST 9%: 9981
+Grand Total: 130862
