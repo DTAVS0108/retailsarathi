@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
 import '../l10n/app_strings.dart';
+import '../services/auth_state.dart';
 import '../services/offline_sync.dart';
 import '../theme/app_theme.dart';
 import '../theme/app_ui.dart';
@@ -52,6 +53,7 @@ class _MoreScreenState extends State<MoreScreen> {
     final strings = context.watch<AppStrings>();
     final branding = context.watch<BrandingPrefsController>();
     final sync = context.watch<OfflineSyncService>();
+    final auth = context.watch<AuthState>();
 
     final sections = <_MoreSection>[
       _MoreSection(
@@ -162,18 +164,22 @@ class _MoreScreenState extends State<MoreScreen> {
             subtitle: strings.t('reports_sub'),
             onTap: () => _push(const ReportsScreen()),
           ),
-          _MoreItem(
-            icon: Icons.analytics_outlined,
-            title: 'Analytics',
-            subtitle: 'ABC · dead stock · margins',
-            onTap: () => _push(const AnalyticsScreen()),
-          ),
-          _MoreItem(
-            icon: Icons.account_balance_outlined,
-            title: 'GST returns',
-            subtitle: 'GSTR-1 · GSTR-3B',
-            onTap: () => _push(const GstScreen()),
-          ),
+          // Analytics and GST returns are owner/manager-only server-side (no cashier/technician
+          // override exists on those endpoints) — omit rather than let the tap 403.
+          if (auth.isOwnerOrManager) ...[
+            _MoreItem(
+              icon: Icons.analytics_outlined,
+              title: 'Analytics',
+              subtitle: 'ABC · dead stock · margins',
+              onTap: () => _push(const AnalyticsScreen()),
+            ),
+            _MoreItem(
+              icon: Icons.account_balance_outlined,
+              title: 'GST returns',
+              subtitle: 'GSTR-1 · GSTR-3B',
+              onTap: () => _push(const GstScreen()),
+            ),
+          ],
         ],
       ),
       _MoreSection(
@@ -264,8 +270,16 @@ class _MoreScreenState extends State<MoreScreen> {
                     child: Row(
                       children: [
                         Icon(
-                          sync.online ? Icons.cloud_done_rounded : Icons.cloud_off_rounded,
-                          color: sync.online ? colors.primary : AppColors.warn,
+                          sync.failedCount > 0
+                              ? Icons.error_outline_rounded
+                              : sync.online
+                                  ? Icons.cloud_done_rounded
+                                  : Icons.cloud_off_rounded,
+                          color: sync.failedCount > 0
+                              ? AppColors.danger
+                              : sync.online
+                                  ? colors.primary
+                                  : AppColors.warn,
                         ),
                         const SizedBox(width: 10),
                         Expanded(
@@ -280,12 +294,15 @@ class _MoreScreenState extends State<MoreScreen> {
                                 ),
                               ),
                               Text(
-                                sync.pending > 0
-                                    ? '${sync.pending} ${strings.t('pending_sync')}'
-                                    : strings.t('sync_catalog_hint'),
+                                sync.failedCount > 0
+                                    ? '${sync.failedCount} failed — needs attention'
+                                    : sync.pending > 0
+                                        ? '${sync.pending} ${strings.t('pending_sync')}'
+                                        : strings.t('sync_catalog_hint'),
                                 style: TextStyle(
                                   fontSize: 12,
-                                  color: colors.mutedOn(colors.surface),
+                                  color: sync.failedCount > 0 ? AppColors.danger : colors.mutedOn(colors.surface),
+                                  fontWeight: sync.failedCount > 0 ? FontWeight.w700 : FontWeight.normal,
                                 ),
                               ),
                             ],

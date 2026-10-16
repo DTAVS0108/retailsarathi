@@ -74,7 +74,10 @@ export class ProductsService {
         : {}),
     };
 
-    const include = { serials: { where: { status: 'IN_STOCK' as const } } };
+    const include = {
+      serials: { where: { status: 'IN_STOCK' as const } },
+      parentProduct: { select: { id: true, name: true } },
+    };
 
     // Low stock compares stockQty to each row's threshold — resolve ids lightly, then page.
     if (opts.lowStock && !opts.outOfStock) {
@@ -905,6 +908,9 @@ export class ProductsService {
     type: 'PURCHASE' | 'ADJUSTMENT' | 'RETURN',
     notes?: string,
   ) {
+    if (!quantity) {
+      throw new BadRequestException('Adjustment quantity cannot be zero');
+    }
     const product = await this.findOne(tenantId, productId);
     void product;
     const updated = await this.prisma.$transaction(async (tx) => {

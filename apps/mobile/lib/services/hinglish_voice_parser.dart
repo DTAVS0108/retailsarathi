@@ -65,7 +65,6 @@ class HinglishVoiceParser {
     'bill',
     'karo',
     'करो',
-    'do', // ambiguous — handled as qty when alone after product
     'please',
     ' जी',
     'ji',

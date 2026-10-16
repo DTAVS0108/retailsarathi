@@ -113,19 +113,22 @@ export default function InvoiceDetailPage() {
   const [ewayBillNo, setEwayBillNo] = useState('');
   const [vehicleNo, setVehicleNo] = useState('');
   const [savingTransport, setSavingTransport] = useState(false);
+  const [invoiceCopyCount, setInvoiceCopyCount] = useState(1);
 
   async function loadInvoice() {
     try {
       setLoading(true);
       setError('');
-      const [invoiceResponse, printResponse] = await Promise.all([
+      const [invoiceResponse, printResponse, tenantResponse] = await Promise.all([
         apiWithAuth<InvoiceDetail>(`/invoices/${params.id}`),
         apiWithAuth<PrintInvoiceData>(`/invoices/${params.id}/print`),
+        apiWithAuth<{ invoiceCopyCount?: number }>('/tenants/profile').catch(() => ({ invoiceCopyCount: 1 })),
       ]);
       setInvoice(invoiceResponse);
       setPrintData(printResponse);
       setEwayBillNo(invoiceResponse.ewayBillNo ?? '');
       setVehicleNo(invoiceResponse.vehicleNo ?? '');
+      setInvoiceCopyCount(tenantResponse.invoiceCopyCount ?? 1);
     } catch (err) {
       setError(parseError(err));
     } finally {
@@ -164,6 +167,7 @@ export default function InvoiceDetailPage() {
       createdAt: invoice.createdAt,
       grandTotal: invoice.grandTotal,
       status: invoice.status,
+      documentType: invoice.type === 'CREDIT_NOTE' ? 'CREDIT_NOTE' : 'TAX_INVOICE',
       notes: invoice.notes,
       payments: invoice.payments,
       lines: invoice.lines.map((line) => ({
@@ -265,6 +269,7 @@ export default function InvoiceDetailPage() {
                 printData={printData}
                 variant="toolbar"
                 onError={setError}
+                invoiceCopyCount={invoiceCopyCount}
               />
             ) : null}
             <Button
@@ -312,6 +317,7 @@ export default function InvoiceDetailPage() {
           printData={printData}
           autoFocus={highlightPrint}
           onError={setError}
+          invoiceCopyCount={invoiceCopyCount}
         />
       ) : null}
 

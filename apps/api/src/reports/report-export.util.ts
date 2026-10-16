@@ -1,5 +1,7 @@
 import * as XLSX from 'xlsx';
 
+export type ReportFormat = 'json' | 'csv' | 'xlsx' | 'pdf';
+
 export function escapeCsvCell(value: unknown): string {
   const s = value == null ? '' : String(value);
   if (/[",\r\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;

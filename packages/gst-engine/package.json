@@ -10,9 +10,11 @@
     "test": "node --test dist/**/*.test.js"
   },
   "dependencies": {
-    "@retail-sarathi/types": "*"
+    "@retail-sarathi/types": "*",
+    "qrcode": "^1.5.4"
   },
   "devDependencies": {
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "@types/qrcode": "^1.5.5"
   }
 }

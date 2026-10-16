@@ -6,7 +6,7 @@ const ROWS: Array<{ keys: string; action: string }> = [
   { keys: 'F6', action: 'Serial / IMEI search' },
   { keys: 'F7', action: 'Returns tab' },
   { keys: 'F8', action: 'Clear cart' },
-  { keys: 'F9', action: 'Close shift' },
+  { keys: 'F9', action: 'Shift summary' },
   { keys: 'F10', action: 'Focus payments' },
   { keys: 'F12', action: 'Preview & submit bill' },
   { keys: 'Ctrl+/', action: 'This cheat sheet' },

@@ -2,30 +2,39 @@ export function SyncBadge({
   online,
   syncing,
   pending,
+  failed = 0,
   lastSyncAt,
   statusText,
 }: {
   online: boolean;
   syncing: boolean;
   pending: number;
+  /** Permanently-stuck outbox entries (FAILED/CONFLICT) — won't resolve on their own by retrying. */
+  failed?: number;
   lastSyncAt: string | null;
   statusText?: string;
 }) {
-  const tone = !online
-    ? { bg: 'color-mix(in srgb, #b45309 18%, var(--rs-surface))', fg: '#b45309' }
-    : syncing
-      ? { bg: 'color-mix(in srgb, var(--rs-accent) 18%, var(--rs-surface))', fg: 'var(--rs-accent)' }
-      : pending > 0
-        ? { bg: 'color-mix(in srgb, #ca8a04 18%, var(--rs-surface))', fg: '#a16207' }
-        : { bg: 'color-mix(in srgb, #059669 16%, var(--rs-surface))', fg: '#047857' };
+  const tone =
+    failed > 0
+      ? { bg: 'color-mix(in srgb, #dc2626 18%, var(--rs-surface))', fg: '#b91c1c' }
+      : !online
+        ? { bg: 'color-mix(in srgb, #b45309 18%, var(--rs-surface))', fg: '#b45309' }
+        : syncing
+          ? { bg: 'color-mix(in srgb, var(--rs-accent) 18%, var(--rs-surface))', fg: 'var(--rs-accent)' }
+          : pending > 0
+            ? { bg: 'color-mix(in srgb, #ca8a04 18%, var(--rs-surface))', fg: '#a16207' }
+            : { bg: 'color-mix(in srgb, #059669 16%, var(--rs-surface))', fg: '#047857' };
 
-  const label = !online
-    ? 'Offline'
-    : syncing
-      ? 'Syncing…'
-      : pending > 0
-        ? `${pending} pending`
-        : 'Synced';
+  const label =
+    failed > 0
+      ? `${failed} failed — needs attention`
+      : !online
+        ? 'Offline'
+        : syncing
+          ? 'Syncing…'
+          : pending > 0
+            ? `${pending} pending`
+            : 'Synced';
 
   return (
     <span
@@ -35,6 +44,7 @@ export function SyncBadge({
         statusText,
         lastSyncAt ? `Last sync: ${new Date(lastSyncAt).toLocaleString('en-IN')}` : null,
         pending ? `${pending} in outbox` : null,
+        failed ? `${failed} permanently failed — will not auto-retry, needs manual review` : null,
       ]
         .filter(Boolean)
         .join(' · ')}

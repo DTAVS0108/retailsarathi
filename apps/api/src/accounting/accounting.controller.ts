@@ -2,12 +2,14 @@ import { Controller, Get, Post, Body, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { AccountingService } from './accounting.service';
 import { CreateJournalEntryDto, CreateAccountDto } from './dto/accounting.dto';
-import { CurrentUser, JwtPayload } from '../common/decorators';
+import { CurrentUser, JwtPayload, Roles } from '../common/decorators';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RolesGuard } from '../common/roles.guard';
 
 @ApiTags('accounting')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('OWNER', 'MANAGER')
 @Controller('accounting')
 export class AccountingController {
   constructor(private accounting: AccountingService) {}

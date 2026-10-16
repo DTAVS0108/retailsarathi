@@ -5,6 +5,7 @@ import { Badge, Button, Card, formatINR } from '@retail-sarathi/ui';
 import { AppLoader } from '@/app/_components/app-loader';
 import { confirmDialog } from '@/app/_components/confirm-dialog';
 import { apiWithAuth } from '@/lib/helpers';
+import { API_URL } from '@/lib/api';
 import {
   pageShellClassName,
   MessageBanner,
@@ -20,6 +21,7 @@ import {
   tableHeaderClassName,
   toNumber,
 } from '../_components/dashboard-ui';
+import { RowActionsMenu } from '../_components/row-actions-menu';
 
 type OrderStatus = 'IMPORTED' | 'FULFILLED' | 'CANCELLED' | 'FAILED';
 type Region = 'india' | 'global' | 'self_hosted';
@@ -42,7 +44,9 @@ type Channel = {
   platform: string;
   isActive: boolean;
   lastSyncAt: string | null;
-  credentials?: Record<string, unknown>;
+  hasCredentials?: boolean;
+  credentialFields?: string[];
+  webhookToken?: string | null;
   _count?: { orders: number };
 };
 
@@ -306,6 +310,23 @@ export default function EcommercePage() {
   const [statusFilter, setStatusFilter] = useState<'' | OrderStatus>('');
   const [syncingId, setSyncingId] = useState<string | null>(null);
   const [busyOrderId, setBusyOrderId] = useState<string | null>(null);
+  const [revealedWebhook, setRevealedWebhook] = useState<Record<string, boolean>>({});
+
+  function webhookUrl(channel: Channel): string {
+    const base = API_URL.startsWith('http')
+      ? API_URL
+      : `${typeof window !== 'undefined' ? window.location.origin : ''}${API_URL}`;
+    return `${base}/ecommerce/webhook/${channel.id}?token=${channel.webhookToken ?? ''}`;
+  }
+
+  async function copyWebhookUrl(channel: Channel) {
+    try {
+      await navigator.clipboard.writeText(webhookUrl(channel));
+      setSuccess('Webhook URL copied to clipboard');
+    } catch {
+      setError('Could not copy — select and copy the URL manually');
+    }
+  }
 
   const platformMeta = useCallback(
     (id: string) =>
@@ -423,16 +444,18 @@ export default function EcommercePage() {
     try {
       setSyncingId(id);
       setError('');
-      const result = await apiWithAuth<{ imported: number; skipped: number; note?: string }>(
+      const result = await apiWithAuth<{ imported: number; skipped: number; note?: string; mode?: string }>(
         `/ecommerce/channels/${id}/sync`,
         { method: 'POST' },
       );
       setSuccess(
-        result.imported
-          ? `Imported ${result.imported} order${result.imported === 1 ? '' : 's'}${
-              result.skipped ? ` · ${result.skipped} skipped` : ''
-            }`
-          : result.note || 'Sync finished — no new orders',
+        result.mode === 'webhook'
+          ? result.note || 'This channel receives orders via webhook — see the URL below.'
+          : result.imported
+            ? `Imported ${result.imported} order${result.imported === 1 ? '' : 's'}${
+                result.skipped ? ` · ${result.skipped} skipped` : ''
+              }`
+            : result.note || 'Sync finished — no new orders',
       );
       await load();
     } catch (err) {
@@ -511,9 +534,12 @@ export default function EcommercePage() {
       {success ? <MessageBanner tone="success">{success}</MessageBanner> : null}
 
       <MessageBanner tone="info" autoHideMs={0} alsoToast={false}>
-        Live marketplace APIs are not wired yet — Sync now pulls sample demo orders so you can practise
-        the workflow. Credentials you save are stored for when production connectors go live. Missing a
-        channel? Use Custom API (Unicommerce, Dukaan, EasyEcom, CSV feeds, etc.).
+        Named marketplaces (Shopify, Amazon, Flipkart, etc.) are demo mode — Sync now pulls sample orders
+        so you can practise the workflow; no live marketplace API calls are made yet, and credentials you
+        save are encrypted and held for when a production connector ships. <strong>Custom API</strong> is
+        the one real, working path today: connect it to get a webhook URL that any external system
+        (Unicommerce, Dukaan, EasyEcom, a Zapier/Make automation, your own storefront) can POST real
+        orders to directly.
       </MessageBanner>
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -791,15 +817,43 @@ export default function EcommercePage() {
                     </div>
                   </dl>
 
+                  {channel.platform === 'CUSTOM' ? (
+                    <div className="mt-4 rounded-xl border border-teal-200 bg-teal-50/60 px-3 py-2.5 text-xs">
+                      <p className="font-semibold text-teal-900">Webhook URL (real orders, not demo)</p>
+                      <p className="mt-1 break-all font-mono text-teal-800">
+                        {revealedWebhook[channel.id]
+                          ? webhookUrl(channel)
+                          : `${webhookUrl(channel).split('token=')[0]}token=••••••••••••`}
+                      </p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          onClick={() =>
+                            setRevealedWebhook((prev) => ({ ...prev, [channel.id]: !prev[channel.id] }))
+                          }
+                        >
+                          {revealedWebhook[channel.id] ? 'Hide' : 'Reveal'}
+                        </Button>
+                        <Button type="button" size="sm" variant="secondary" onClick={() => void copyWebhookUrl(channel)}>
+                          Copy
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
+
                   <div className="mt-4 flex flex-wrap gap-2">
-                    <Button
-                      type="button"
-                      size="sm"
-                      disabled={!channel.isActive || syncingId === channel.id}
-                      onClick={() => void syncChannel(channel.id)}
-                    >
-                      {syncingId === channel.id ? 'Syncing…' : 'Sync now'}
-                    </Button>
+                    {channel.platform !== 'CUSTOM' ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={!channel.isActive || syncingId === channel.id}
+                        onClick={() => void syncChannel(channel.id)}
+                      >
+                        {syncingId === channel.id ? 'Syncing…' : 'Sync now'}
+                      </Button>
+                    ) : null}
                     <Button
                       type="button"
                       size="sm"
@@ -944,38 +998,33 @@ export default function EcommercePage() {
                     </td>
                     <td className={tableCellClassName}>{formatDateTime(order.createdAt)}</td>
                     <td className={tableCellClassName}>
-                      <div className="flex flex-wrap gap-1.5">
-                        {order.status === 'IMPORTED' ? (
-                          <>
-                            <Button
-                              type="button"
-                              size="sm"
-                              disabled={busyOrderId === order.id}
-                              onClick={() => void setOrderStatus(order, 'FULFILLED')}
-                            >
-                              Fulfill
-                            </Button>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="secondary"
-                              disabled={busyOrderId === order.id}
-                              onClick={() => void setOrderStatus(order, 'CANCELLED')}
-                            >
-                              Cancel
-                            </Button>
-                          </>
-                        ) : (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="secondary"
-                            disabled={busyOrderId === order.id}
-                            onClick={() => void setOrderStatus(order, 'IMPORTED')}
-                          >
-                            Reopen
-                          </Button>
-                        )}
+                      <div className="flex justify-end">
+                        <RowActionsMenu
+                          actions={[
+                            {
+                              key: 'fulfill',
+                              label: 'Fulfill',
+                              hidden: order.status !== 'IMPORTED',
+                              disabled: busyOrderId === order.id,
+                              onClick: () => void setOrderStatus(order, 'FULFILLED'),
+                            },
+                            {
+                              key: 'cancel',
+                              label: 'Cancel',
+                              tone: 'danger',
+                              hidden: order.status !== 'IMPORTED',
+                              disabled: busyOrderId === order.id,
+                              onClick: () => void setOrderStatus(order, 'CANCELLED'),
+                            },
+                            {
+                              key: 'reopen',
+                              label: 'Reopen',
+                              hidden: order.status === 'IMPORTED',
+                              disabled: busyOrderId === order.id,
+                              onClick: () => void setOrderStatus(order, 'IMPORTED'),
+                            },
+                          ]}
+                        />
                       </div>
                     </td>
                   </tr>

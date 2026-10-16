@@ -15,6 +15,26 @@ export function getToken(): string | null {
   return localStorage.getItem('token');
 }
 
+export interface StoredUser {
+  id: string;
+  email: string;
+  name: string;
+  role: 'OWNER' | 'MANAGER' | 'CASHIER' | 'TECHNICIAN';
+  tenantId: string;
+  branchId: string | null;
+}
+
+/** The logged-in user, as stored at login — for client-side role-based UI gating (the server is the real guard). */
+export function getStoredUser(): StoredUser | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem('user');
+    return raw ? (JSON.parse(raw) as StoredUser) : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Normalize invoice / ack dates to app display format (21 Jul 2026). */
 export function normalizeAppDate(value?: string | Date | null): string {
   if (!value) return '';

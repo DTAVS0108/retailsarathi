@@ -2,7 +2,7 @@ import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards } from '@ne
 import { ApiTags } from '@nestjs/swagger';
 import { PlatformService } from './platform.service';
 import { PlatformAdminGuard } from './platform-admin.guard';
-import { Public } from '../common/decorators';
+import { Public, CurrentPlatformAdmin, PlatformAdminPayload } from '../common/decorators';
 
 @ApiTags('platform')
 @Controller('platform')
@@ -23,8 +23,34 @@ export class PlatformController {
 
   @UseGuards(PlatformAdminGuard)
   @Get('tenants')
-  tenants() {
-    return this.platform.listTenants();
+  tenants(
+    @Query('search') search?: string,
+    @Query('plan') plan?: string,
+    @Query('status') status?: string,
+  ) {
+    return this.platform.listTenants({ search, plan, status });
+  }
+
+  @UseGuards(PlatformAdminGuard)
+  @Get('tenants/:id')
+  tenantDetail(@Param('id') id: string) {
+    return this.platform.getTenantDetail(id);
+  }
+
+  @UseGuards(PlatformAdminGuard)
+  @Post('tenants/:id/suspend')
+  suspendTenant(
+    @CurrentPlatformAdmin() admin: PlatformAdminPayload,
+    @Param('id') id: string,
+    @Body('reason') reason?: string,
+  ) {
+    return this.platform.suspendTenant(id, admin.sub, reason);
+  }
+
+  @UseGuards(PlatformAdminGuard)
+  @Post('tenants/:id/reactivate')
+  reactivateTenant(@CurrentPlatformAdmin() admin: PlatformAdminPayload, @Param('id') id: string) {
+    return this.platform.reactivateTenant(id, admin.sub);
   }
 
   @UseGuards(PlatformAdminGuard)
@@ -41,7 +67,17 @@ export class PlatformController {
 
   @UseGuards(PlatformAdminGuard)
   @Patch('tickets/:id')
-  updateTicket(@Param('id') id: string, @Body('status') status: string) {
-    return this.platform.updateTicket(id, status);
+  updateTicket(
+    @CurrentPlatformAdmin() admin: PlatformAdminPayload,
+    @Param('id') id: string,
+    @Body('status') status: string,
+  ) {
+    return this.platform.updateTicket(id, status, admin.sub);
+  }
+
+  @UseGuards(PlatformAdminGuard)
+  @Get('audit-log')
+  auditLog() {
+    return this.platform.getAuditLog();
   }
 }

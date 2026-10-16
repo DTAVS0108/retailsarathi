@@ -8,7 +8,7 @@ import {
   INVOICE_DISPLAY_FIELDS,
   type InvoiceDisplayOptions,
 } from '@retail-sarathi/gst-engine';
-import { apiWithAuth } from '@/lib/helpers';
+import { apiWithAuth, getStoredUser } from '@/lib/helpers';
 import { writeShopBranding } from '@/lib/shop-branding';
 import { ShopLogoField } from '../_components/shop-logo-field';
 import { assertGstinOptional, normalizeGstin, stateCodeFromGstin } from '@/lib/validators';
@@ -26,6 +26,7 @@ import { useWebAppearance } from '@/lib/use-web-appearance';
 
 interface TenantProfile {
   name: string;
+  slug?: string | null;
   logoUrl?: string | null;
   gstin?: string | null;
   stateCode: string;
@@ -35,11 +36,14 @@ interface TenantProfile {
   compositionScheme?: boolean | null;
   defaultInvoiceTemplate?: string | null;
   mobileInvoiceTemplate?: string | null;
+  invoiceCopyCount?: number | null;
   invoiceDisplayOptions?: Partial<InvoiceDisplayOptions> | null;
   bankName?: string | null;
   bankAccountNo?: string | null;
   bankIfsc?: string | null;
   bankBranch?: string | null;
+  upiId?: string | null;
+  expectedCheckInTime?: string | null;
 }
 
 interface EinvoiceStatus {
@@ -50,29 +54,36 @@ interface EinvoiceStatus {
 
 interface SettingsFormState {
   name: string;
+  slug: string;
   gstin: string;
   stateCode: string;
   phone: string;
   email: string;
   address: string;
   compositionScheme: boolean;
+  expectedCheckInTime: string;
 }
 
 const EMPTY_FORM: SettingsFormState = {
   name: '',
+  slug: '',
   gstin: '',
   stateCode: '',
   phone: '',
   email: '',
   address: '',
   compositionScheme: false,
+  expectedCheckInTime: '',
 };
 
 export default function SettingsPage() {
+  const isOwner = getStoredUser()?.role === 'OWNER';
   const { prefs: appearancePrefs, setPrefs: setAppearancePrefs } = useWebAppearance();
   const [form, setForm] = useState<SettingsFormState>(EMPTY_FORM);
   const [defaultTemplate, setDefaultTemplate] = useState('classic');
   const [mobileTemplate, setMobileTemplate] = useState('retail-bold');
+  const [invoiceCopyCount, setInvoiceCopyCount] = useState(1);
+  const [savingCopyCount, setSavingCopyCount] = useState(false);
   const [settingsTab, setSettingsTab] = useState<'business' | 'invoices' | 'numbering' | 'appearance'>('business');
   const [templateChannel, setTemplateChannel] = useState<'web' | 'mobile'>('web');
   const [displayOptions, setDisplayOptions] = useState<InvoiceDisplayOptions>({
@@ -83,6 +94,7 @@ export default function SettingsPage() {
     bankAccountNo: '',
     bankIfsc: '',
     bankBranch: '',
+    upiId: '',
   });
   const [complianceLive, setComplianceLive] = useState(false);
   const [savingDisplay, setSavingDisplay] = useState(false);
@@ -109,17 +121,20 @@ export default function SettingsPage() {
         ]);
         setForm({
           name: profile.name || '',
+          slug: profile.slug || '',
           gstin: profile.gstin || '',
           stateCode: profile.stateCode || '',
           phone: profile.phone || '',
           email: profile.email || '',
           address: profile.address || '',
           compositionScheme: Boolean(profile.compositionScheme),
+          expectedCheckInTime: profile.expectedCheckInTime || '',
         });
         writeShopBranding({ shopName: profile.name || '', logoUrl: profile.logoUrl || '' });
         setLogoUrl(profile.logoUrl ?? null);
         setDefaultTemplate(profile.defaultInvoiceTemplate || 'classic');
         setMobileTemplate(profile.mobileInvoiceTemplate || profile.defaultInvoiceTemplate || 'retail-bold');
+        setInvoiceCopyCount(profile.invoiceCopyCount ?? 1);
         setDisplayOptions({
           ...DEFAULT_INVOICE_DISPLAY_OPTIONS,
           ...(profile.invoiceDisplayOptions ?? {}),
@@ -129,6 +144,7 @@ export default function SettingsPage() {
           bankAccountNo: profile.bankAccountNo || '',
           bankIfsc: profile.bankIfsc || '',
           bankBranch: profile.bankBranch || '',
+          upiId: profile.upiId || '',
         });
         setComplianceLive(Boolean(einvoiceStatus.configured));
       } catch (err) {
@@ -155,22 +171,27 @@ export default function SettingsPage() {
       setSaving(true);
       setError('');
       setSuccess('');
-      await apiWithAuth('/tenants/profile', {
+      const updated = await apiWithAuth<TenantProfile>('/tenants/profile', {
         method: 'PATCH',
         body: JSON.stringify({
           name: form.name.trim(),
-          gstin,
+          slug: form.slug.trim() || undefined,
+          // GSTIN is owner-only server-side; omit it for a non-owner so saving unrelated fields
+          // (name, phone, composition scheme, etc.) on this same form doesn't 403.
+          ...(isOwner ? { gstin } : {}),
           stateCode,
           phone: form.phone.trim() || undefined,
           email: form.email.trim() || undefined,
           address: form.address.trim() || undefined,
           compositionScheme: form.compositionScheme,
+          expectedCheckInTime: form.expectedCheckInTime || undefined,
         }),
       });
       setForm((current) => ({
         ...current,
         stateCode,
         gstin: gstin ?? current.gstin,
+        slug: updated.slug || current.slug,
       }));
       writeShopBranding({ shopName: form.name.trim() });
       setSuccess(
@@ -263,10 +284,17 @@ export default function SettingsPage() {
         method: 'PATCH',
         body: JSON.stringify({
           invoiceDisplayOptions: displayOptions,
-          bankName: bankFields.bankName.trim() || undefined,
-          bankAccountNo: bankFields.bankAccountNo.trim() || undefined,
-          bankIfsc: bankFields.bankIfsc.trim() || undefined,
-          bankBranch: bankFields.bankBranch.trim() || undefined,
+          // Bank/UPI fields are owner-only server-side; omit them entirely for a non-owner so
+          // resaving unrelated display options (this form's other fields) doesn't 403.
+          ...(isOwner
+            ? {
+                bankName: bankFields.bankName.trim() || undefined,
+                bankAccountNo: bankFields.bankAccountNo.trim() || undefined,
+                bankIfsc: bankFields.bankIfsc.trim() || undefined,
+                bankBranch: bankFields.bankBranch.trim() || undefined,
+                upiId: bankFields.upiId.trim() || undefined,
+              }
+            : {}),
         }),
       });
       setSuccess('Invoice display settings saved.');
@@ -304,6 +332,21 @@ export default function SettingsPage() {
       setError(parseError(err));
     } finally {
       setSavingTemplate(false);
+    }
+  }
+
+  async function saveInvoiceCopyCount(count: number) {
+    try {
+      setSavingCopyCount(true);
+      setError('');
+      setSuccess('');
+      await apiWithAuth('/tenants/profile', { method: 'PATCH', body: JSON.stringify({ invoiceCopyCount: count }) });
+      setInvoiceCopyCount(count);
+      setSuccess(`"Download invoice" will now bundle ${count} ${count === 1 ? 'copy' : 'copies'}.`);
+    } catch (err) {
+      setError(parseError(err));
+    } finally {
+      setSavingCopyCount(false);
     }
   }
 
@@ -364,11 +407,33 @@ export default function SettingsPage() {
                   onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
                 />
               </label>
+              <label className="space-y-2 text-sm font-medium text-slate-700 md:col-span-2">
+                <span>Public URL</span>
+                <div className="flex items-center gap-2">
+                  <span className="whitespace-nowrap text-xs text-slate-400">/queue/</span>
+                  <input
+                    className={inputClassName}
+                    value={form.slug}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        slug: event.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'),
+                      }))
+                    }
+                    placeholder="your-shop-name"
+                  />
+                </div>
+                <span className="block text-xs font-normal text-slate-500">
+                  Used for the public repair-queue display shown at your counter — e.g.{' '}
+                  {typeof window !== 'undefined' ? window.location.origin : ''}/queue/{form.slug || 'your-shop-name'}
+                </span>
+              </label>
               <label className="space-y-2 text-sm font-medium text-slate-700">
                 <span>GSTIN</span>
                 <input
                   className={inputClassName}
                   value={form.gstin}
+                  disabled={!isOwner}
                   onChange={(event) => {
                     const gstin = normalizeGstin(event.target.value);
                     const stateCode = stateCodeFromGstin(gstin);
@@ -381,6 +446,11 @@ export default function SettingsPage() {
                   maxLength={15}
                   placeholder="e.g. 09AAAAA0000A1Z5"
                 />
+                {!isOwner ? (
+                  <span className="block text-xs font-normal text-amber-700">
+                    Only the shop owner can change the GSTIN — ask an owner to update this.
+                  </span>
+                ) : null}
               </label>
               <label className="space-y-2 text-sm font-medium text-slate-700">
                 <span>State code</span>
@@ -427,6 +497,18 @@ export default function SettingsPage() {
                   value={form.address}
                   onChange={(event) => setForm((current) => ({ ...current, address: event.target.value }))}
                 />
+              </label>
+              <label className="space-y-2 text-sm font-medium text-slate-700">
+                <span>Expected check-in time</span>
+                <input
+                  type="time"
+                  className={inputClassName}
+                  value={form.expectedCheckInTime}
+                  onChange={(event) => setForm((current) => ({ ...current, expectedCheckInTime: event.target.value }))}
+                />
+                <span className="block text-xs font-normal text-slate-500">
+                  Staff who check in after this time (with no assigned shift) are flagged late on the Staff page. Leave blank to disable.
+                </span>
               </label>
               <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700 md:col-span-2">
                 <input
@@ -532,12 +614,18 @@ export default function SettingsPage() {
             </span>
           </label>
 
+          {!isOwner ? (
+            <p className="text-xs font-medium text-amber-700">
+              Only the shop owner can change bank/UPI payout details — ask an owner to update these.
+            </p>
+          ) : null}
           <div className="grid gap-4 md:grid-cols-2">
             <label className="space-y-2 text-sm font-medium text-slate-700">
               <span>Bank name</span>
               <input
                 className={inputClassName}
                 value={bankFields.bankName}
+                disabled={!isOwner}
                 onChange={(event) => setBankFields((c) => ({ ...c, bankName: event.target.value }))}
               />
             </label>
@@ -546,6 +634,7 @@ export default function SettingsPage() {
               <input
                 className={inputClassName}
                 value={bankFields.bankAccountNo}
+                disabled={!isOwner}
                 onChange={(event) => setBankFields((c) => ({ ...c, bankAccountNo: event.target.value }))}
               />
             </label>
@@ -554,6 +643,7 @@ export default function SettingsPage() {
               <input
                 className={inputClassName}
                 value={bankFields.bankIfsc}
+                disabled={!isOwner}
                 onChange={(event) => setBankFields((c) => ({ ...c, bankIfsc: event.target.value }))}
               />
             </label>
@@ -562,8 +652,22 @@ export default function SettingsPage() {
               <input
                 className={inputClassName}
                 value={bankFields.bankBranch}
+                disabled={!isOwner}
                 onChange={(event) => setBankFields((c) => ({ ...c, bankBranch: event.target.value }))}
               />
+            </label>
+            <label className="space-y-2 text-sm font-medium text-slate-700">
+              <span>UPI ID (for scan-to-pay QR at checkout)</span>
+              <input
+                className={inputClassName}
+                placeholder="shopname@okhdfcbank"
+                value={bankFields.upiId}
+                disabled={!isOwner}
+                onChange={(event) => setBankFields((c) => ({ ...c, upiId: event.target.value }))}
+              />
+              <span className="block text-xs font-normal text-slate-500">
+                Shown as a scannable QR on the POS screen when a customer pays by UPI.
+              </span>
             </label>
           </div>
 
@@ -581,6 +685,36 @@ export default function SettingsPage() {
               Pick separate layouts for the web dashboard and the mobile app. Mobile uses the same HTML
               engine — Bluetooth / Wi‑Fi print from the app follows your mobile template choice.
             </p>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <h3 className="text-sm font-semibold text-slate-900">Copies per download</h3>
+            <p className="mt-0.5 text-xs text-slate-500">
+              "Download invoice" bundles this many copies into one print — GST requires 3 for goods
+              (Original for buyer, Duplicate for transporter, Triplicate for you) or 2 for services
+              (Original, Duplicate). Credit notes always download as a single copy.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {[
+                { count: 1, label: 'Original only' },
+                { count: 2, label: '+ Duplicate' },
+                { count: 3, label: '+ Triplicate' },
+              ].map((opt) => (
+                <button
+                  key={opt.count}
+                  type="button"
+                  disabled={savingCopyCount}
+                  onClick={() => void saveInvoiceCopyCount(opt.count)}
+                  className={`rounded-lg px-3 py-1.5 text-sm font-medium transition disabled:opacity-50 ${
+                    invoiceCopyCount === opt.count
+                      ? 'bg-teal-700 text-white'
+                      : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-100'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="flex flex-wrap gap-2">

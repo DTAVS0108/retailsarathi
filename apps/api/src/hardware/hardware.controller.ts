@@ -11,17 +11,20 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { HardwareService } from './hardware.service';
-import { CurrentUser, JwtPayload } from '../common/decorators';
+import { CurrentUser, JwtPayload, Roles } from '../common/decorators';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RolesGuard } from '../common/roles.guard';
 
 @ApiTags('hardware')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('OWNER', 'MANAGER')
 @Controller('hardware')
 export class HardwareController {
   constructor(private hardware: HardwareService) {}
 
   @Get('presets')
+  @Roles('OWNER', 'MANAGER', 'CASHIER', 'TECHNICIAN')
   presets() {
     return this.hardware.getDevicePresets();
   }
@@ -65,6 +68,7 @@ export class HardwareController {
   }
 
   @Post('print-thermal')
+  @Roles('OWNER', 'MANAGER', 'CASHIER')
   printThermal(
     @CurrentUser() user: JwtPayload,
     @Body()

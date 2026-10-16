@@ -307,7 +307,21 @@ class _PosScreenState extends State<PosScreen> {
       _toast('${strings.t('no_match')}: "${intent.raw}"', errorStyle: true);
       return;
     }
-    final product = products.firstWhere((p) => p.id == match.id);
+    final product = products.firstWhere((p) => p.id == match.product.id);
+    if (match.score < VoiceBillingService.confirmBelow) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Did you mean this?'),
+          content: Text('Heard "${intent.raw}" — closest match is "${product.name}". Add it?'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Add')),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+    }
     _add(product, qty: intent.quantity);
     _toast('${strings.t('added')}: ${product.name} × ${intent.quantity}');
   }

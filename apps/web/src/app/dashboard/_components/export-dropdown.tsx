@@ -20,7 +20,7 @@ const OPTIONS: Array<{ value: ExportFormat; label: string; hint: string }> = [
   { value: 'pdf', label: 'PDF', hint: 'Print / Save as PDF' },
 ];
 
-function downloadBlob(filename: string, blob: Blob) {
+export function downloadBlob(filename: string, blob: Blob) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;

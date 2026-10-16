@@ -154,9 +154,19 @@ export class SubscriptionsService {
       periodDaysLeft: periodEnd
         ? Math.max(0, Math.ceil((periodEnd - now) / 86400000))
         : null,
+      mode: 'demo' as const,
       billingNote:
         'Self-serve plans switch instantly in demo. Enterprise is unlimited — connect with our team for custom pricing.',
     };
+  }
+
+  /** Demo-mode billing history — informational only, never an actual charge. */
+  async listInvoices(tenantId: string) {
+    return this.prisma.subscriptionInvoice.findMany({
+      where: { tenantId },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
   }
 
   async requestEnterpriseContact(
@@ -232,6 +242,15 @@ export class SubscriptionsService {
       return current;
     }
 
+    // Informational-only proration (no real gateway exists): credit/charge the price difference
+    // pro-rated by days remaining in the current period, logged as a demo invoice row.
+    const now = Date.now();
+    const periodEnd = current?.currentPeriodEnd ? new Date(current.currentPeriodEnd).getTime() : now;
+    const daysRemaining = Math.max(0, Math.ceil((periodEnd - now) / 86400000));
+    const dailyOldRate = current ? Number(current.plan.priceMonthly) / 30 : 0;
+    const dailyNewRate = Number(plan.priceMonthly) / 30;
+    const proratedAmount = Math.round((dailyNewRate - dailyOldRate) * daysRemaining * 100) / 100;
+
     const sub = await this.prisma.tenantSubscription.upsert({
       where: { tenantId },
       create: {
@@ -255,10 +274,22 @@ export class SubscriptionsService {
       data: { subscriptionStatus: 'ACTIVE' },
     });
 
+    const invoice = await this.prisma.subscriptionInvoice.create({
+      data: {
+        tenantId,
+        planCode: plan.code,
+        action: 'CHANGE_PLAN',
+        amount: proratedAmount,
+        previousPlanCode: current?.plan.code ?? null,
+        mode: 'demo',
+      },
+    });
+
     return {
       ...sub,
       previousPlanCode: current?.plan.code ?? null,
       changed: current?.plan.code !== plan.code,
+      invoice,
     };
   }
 
@@ -279,6 +310,11 @@ export class SubscriptionsService {
       );
     }
 
+    const before = await this.prisma.tenantSubscription.findUnique({
+      where: { tenantId },
+      include: { plan: true },
+    });
+
     const sub = await this.prisma.tenantSubscription.upsert({
       where: { tenantId },
       create: {
@@ -298,6 +334,17 @@ export class SubscriptionsService {
     await this.prisma.tenant.update({
       where: { id: tenantId },
       data: { subscriptionStatus: 'CANCELLED' },
+    });
+
+    await this.prisma.subscriptionInvoice.create({
+      data: {
+        tenantId,
+        planCode: freePlan.code,
+        action: 'CANCEL',
+        amount: 0,
+        previousPlanCode: before?.plan.code ?? null,
+        mode: 'demo',
+      },
     });
 
     return sub;

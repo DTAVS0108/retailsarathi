@@ -8,6 +8,7 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoginDto, RegisterDto } from './dto/auth.dto';
+import { uniqueSlug } from '../common/slug.util';
 
 @Injectable()
 export class AuthService {
@@ -22,9 +23,15 @@ export class AuthService {
     });
     if (existing) throw new ConflictException('Email already registered');
 
+    const slug = await uniqueSlug(dto.shopName, async (candidate) => {
+      const found = await this.prisma.tenant.findUnique({ where: { slug: candidate } });
+      return !!found;
+    });
+
     const tenant = await this.prisma.tenant.create({
       data: {
         name: dto.shopName,
+        slug,
         gstin: dto.gstin,
         stateCode: dto.stateCode ?? '27',
         phone: dto.phone,

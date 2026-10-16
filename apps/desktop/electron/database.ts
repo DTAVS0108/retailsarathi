@@ -1,9 +1,155 @@
-import Database from 'better-sqlite3';
+import Database from 'better-sqlite3-multiple-ciphers';
 import path from 'path';
-import { app } from 'electron';
-import { createHash, randomUUID } from 'crypto';
+import fs from 'fs';
+import { app, safeStorage } from 'electron';
+import { createHash, randomBytes, randomUUID } from 'crypto';
+
+const PIN_MAX_ATTEMPTS = 5;
+const PIN_LOCKOUT_MS = 30_000;
+
+/** OS-keychain-backed (DPAPI/Keychain/libsecret) — never stored as a raw JWT on disk. */
+function encryptToken(token: string): string {
+  if (!safeStorage.isEncryptionAvailable()) return token; // headless/CI fallback, not expected in normal use
+  return safeStorage.encryptString(token).toString('base64');
+}
+
+function decryptToken(stored: string): string {
+  if (!safeStorage.isEncryptionAvailable()) return stored;
+  try {
+    return safeStorage.decryptString(Buffer.from(stored, 'base64'));
+  } catch {
+    // Pre-encryption-fix rows (plaintext) or a key rotated by the OS — treat as unusable.
+    return '';
+  }
+}
 
 let db: Database.Database;
+
+function dbPath() {
+  return path.join(app.getPath('userData'), 'retail-sarathi.db');
+}
+
+function dbKeyPath() {
+  return path.join(app.getPath('userData'), 'db-key.enc');
+}
+
+/**
+ * The local cache's encryption key protects the whole catalog/invoice DB, not one revocable
+ * token — unlike `encryptToken` above, it must fail closed (throw) rather than silently falling
+ * back to plaintext if the OS keychain (safeStorage) isn't available.
+ */
+function getOrCreateDbKey(): string {
+  if (!safeStorage.isEncryptionAvailable()) {
+    throw new Error(
+      'Secure storage (OS keychain) is not available on this device — cannot open or create the encrypted local database.',
+    );
+  }
+  const keyPath = dbKeyPath();
+  if (fs.existsSync(keyPath)) {
+    return safeStorage.decryptString(fs.readFileSync(keyPath));
+  }
+  const key = randomBytes(32).toString('hex');
+  fs.writeFileSync(keyPath, safeStorage.encryptString(key));
+  return key;
+}
+
+/** SQLCipher-encrypted files don't start with the standard SQLite header magic string. */
+function isPlaintextSqliteFile(filePath: string): boolean {
+  const fd = fs.openSync(filePath, 'r');
+  try {
+    const buf = Buffer.alloc(16);
+    fs.readSync(fd, buf, 0, 16, 0);
+    return buf.toString('utf8', 0, 15) === 'SQLite format 3';
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+export type MigrationStatus =
+  | { state: 'not_needed' }
+  | { state: 'migrated'; justSwapped: boolean }
+  | { state: 'blocked'; pendingCount: number; failedCount: number };
+
+/** Kept open only while migration is blocked, so the app stays usable (plaintext, unencrypted)
+    until the outbox drains — `db` is pointed at it so every existing db-* function keeps working. */
+let legacyDb: Database.Database | null = null;
+
+function countLegacyOutbox(handle: Database.Database, statuses: string[]): number {
+  const placeholders = statuses.map(() => '?').join(',');
+  const row = handle
+    .prepare(`SELECT COUNT(*) as c FROM sync_outbox WHERE status IN (${placeholders})`)
+    .get(...statuses) as { c: number };
+  return row?.c ?? 0;
+}
+
+function swapLegacyForEncrypted() {
+  const p = dbPath();
+  fs.renameSync(p, `${p}.pre-encryption.bak`);
+}
+
+/**
+ * Called once at app startup, before initDatabase(). If a legacy plaintext DB exists with
+ * unsynced sync_outbox rows, this can't safely wipe/recreate it as encrypted — that would
+ * permanently and silently lose offline invoices the server has never seen. Instead it leaves
+ * `db` pointed at the legacy plaintext file (fully usable) and reports 'blocked' so the renderer
+ * can show a clear message and retry once online. If the outbox is already clean, it performs the
+ * swap and returns 'migrated' so the caller can proceed to initDatabase() as normal.
+ */
+export function checkMigration(): MigrationStatus {
+  const p = dbPath();
+  if (!fs.existsSync(p)) return { state: 'not_needed' };
+  if (!isPlaintextSqliteFile(p)) return { state: 'migrated', justSwapped: false };
+
+  const legacy = new Database(p);
+  const blockingCount = countLegacyOutbox(legacy, ['PENDING', 'FAILED', 'CONFLICT']);
+  if (blockingCount === 0) {
+    legacy.close();
+    swapLegacyForEncrypted();
+    return { state: 'migrated', justSwapped: true };
+  }
+
+  legacyDb = legacy;
+  db = legacy;
+  return {
+    state: 'blocked',
+    pendingCount: countLegacyOutbox(legacy, ['PENDING']),
+    failedCount: countLegacyOutbox(legacy, ['FAILED', 'CONFLICT']),
+  };
+}
+
+/**
+ * Retries the migration: runs a real sync against the still-open legacy plaintext DB (draining
+ * whatever PENDING rows it can), then re-checks. FAILED/CONFLICT rows need manual resolution
+ * elsewhere in the app first — they're never auto-retried, same as everywhere else this app
+ * surfaces them. Only swaps to the fresh encrypted DB once the outbox is fully clean.
+ */
+export async function retryMigration(token: string, apiUrl: string): Promise<MigrationStatus> {
+  if (!legacyDb) return checkMigration();
+  const { syncWithServer } = await import('./sync');
+  await syncWithServer(token, apiUrl);
+
+  const blockingCount = countLegacyOutbox(legacyDb, ['PENDING', 'FAILED', 'CONFLICT']);
+  if (blockingCount > 0) {
+    return {
+      state: 'blocked',
+      pendingCount: countLegacyOutbox(legacyDb, ['PENDING']),
+      failedCount: countLegacyOutbox(legacyDb, ['FAILED', 'CONFLICT']),
+    };
+  }
+
+  const deviceIdRow = legacyDb.prepare('SELECT value FROM settings WHERE key = ?').get('device-id') as
+    | { value: string }
+    | undefined;
+  legacyDb.close();
+  legacyDb = null;
+  swapLegacyForEncrypted();
+  // The fresh encrypted DB starts empty — skip the demo-product seed (this device already had a
+  // real catalog) and warm it from the server immediately instead of waiting for the next sync tick.
+  initDatabase({ skipSeedIfEmpty: true });
+  if (deviceIdRow?.value) setSetting('device-id', deviceIdRow.value); // carry the device identity forward
+  await syncWithServer(token, apiUrl);
+  return { state: 'migrated', justSwapped: true };
+}
 
 function ensureColumn(table: string, column: string, ddl: string) {
   const cols = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
@@ -12,9 +158,11 @@ function ensureColumn(table: string, column: string, ddl: string) {
   }
 }
 
-export function initDatabase() {
-  const dbPath = path.join(app.getPath('userData'), 'retail-sarathi.db');
-  db = new Database(dbPath);
+export function initDatabase(opts: { skipSeedIfEmpty?: boolean } = {}) {
+  const key = getOrCreateDbKey();
+  db = new Database(dbPath());
+  db.pragma(`cipher='sqlcipher'`);
+  db.pragma(`key="x'${key}'"`);
   db.pragma('journal_mode = WAL');
 
   db.exec(`
@@ -68,9 +216,10 @@ export function initDatabase() {
   ensureColumn('products', 'brand', 'brand TEXT');
   ensureColumn('products', 'purchase_price', 'purchase_price REAL NOT NULL DEFAULT 0');
   ensureColumn('products', 'mrp', 'mrp REAL');
+  ensureColumn('cashier_pins', 'role', 'role TEXT');
 
   const count = db.prepare('SELECT COUNT(*) as c FROM products').get() as { c: number };
-  if (count.c === 0) {
+  if (count.c === 0 && !opts.skipSeedIfEmpty) {
     seedLocalProducts();
   }
 }
@@ -114,7 +263,9 @@ export function saveLocalInvoice(invoice: Record<string, unknown>) {
     const lines = invoice.lines as Array<{ productId?: string; quantity: number }>;
     for (const line of lines) {
       if (line.productId) {
-        db.prepare('UPDATE products SET stock_qty = stock_qty - ? WHERE id = ?')
+        // Display-cache only — the server is authoritative and re-checks stock at sync-apply
+        // time (WHERE stockQty >= qty), so this only stops a negative number showing locally.
+        db.prepare('UPDATE products SET stock_qty = MAX(0, stock_qty - ?) WHERE id = ?')
           .run(line.quantity, line.productId);
       }
     }
@@ -129,6 +280,19 @@ export function getOutbox() {
 
 export function markOutboxSynced(id: string) {
   db.prepare("UPDATE sync_outbox SET status = 'SYNCED' WHERE id = ?").run(id);
+}
+
+export function markOutboxStatus(id: string, status: 'FAILED' | 'CONFLICT') {
+  db.prepare('UPDATE sync_outbox SET status = ? WHERE id = ?').run(status, id);
+}
+
+/** Permanently-stuck entries (won't be retried) — surfaced in the sync badge instead of silently
+    retried forever. PENDING rows are excluded; those are still mid-flight, not "failed". */
+export function getOutboxFailedCount(): number {
+  const row = db
+    .prepare("SELECT COUNT(*) as c FROM sync_outbox WHERE status IN ('FAILED', 'CONFLICT')")
+    .get() as { c: number };
+  return row?.c ?? 0;
 }
 
 export function getSetting(key: string): string | null {
@@ -196,6 +360,32 @@ export function upsertProductsFromServer(products: Array<Record<string, unknown>
   txn();
 }
 
+/**
+ * Sum of quantities still queued (not yet server-confirmed) per product, across every PENDING
+ * outbox invoice — lets the counter show a realistic sellable count instead of trusting the raw
+ * local cache, which ignores bills already queued but not yet applied server-side.
+ */
+export function getPendingQtyByProduct(): Record<string, number> {
+  const rows = db
+    .prepare("SELECT payload FROM sync_outbox WHERE status = 'PENDING' AND entity_type = 'invoice'")
+    .all() as Array<{ payload: string }>;
+
+  const totals: Record<string, number> = {};
+  for (const row of rows) {
+    let invoice: { lines?: Array<{ productId?: string; quantity?: number }> };
+    try {
+      invoice = JSON.parse(row.payload);
+    } catch {
+      continue;
+    }
+    for (const line of invoice.lines ?? []) {
+      if (!line.productId) continue;
+      totals[line.productId] = (totals[line.productId] ?? 0) + Number(line.quantity ?? 0);
+    }
+  }
+  return totals;
+}
+
 export function getOutboxCount(): number {
   const row = db.prepare("SELECT COUNT(*) as c FROM sync_outbox WHERE status = 'PENDING'").get() as {
     c: number;
@@ -217,21 +407,48 @@ export function hasCashierPins(): boolean {
   return (row?.c ?? 0) > 0;
 }
 
-export function setCashierPin(label: string, pin: string, token: string) {
+export function setCashierPin(label: string, pin: string, token: string, role?: string) {
   const id = randomUUID();
   db.prepare(
-    `INSERT INTO cashier_pins (id, label, pin_hash, token, created_at) VALUES (?, ?, ?, ?, ?)`,
-  ).run(id, label || 'Cashier', hashPin(pin), token, new Date().toISOString());
+    `INSERT INTO cashier_pins (id, label, pin_hash, token, role, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+  ).run(id, label || 'Cashier', hashPin(pin), encryptToken(token), role ?? null, new Date().toISOString());
   return true;
 }
 
-export function verifyCashierPin(pin: string): { ok: boolean; token?: string; label?: string } {
+type PinLockoutState = { failedAttempts: number; lockedUntil: string | null };
+
+/** One global counter for the PIN-unlock screen as a whole — simpler than per-row tracking,
+    and avoids one cashier's mistyped PIN locking out a different cashier's own correct PIN. */
+function getPinLockout(): PinLockoutState {
+  return getJsonSetting<PinLockoutState>('pin-lockout') ?? { failedAttempts: 0, lockedUntil: null };
+}
+
+export function verifyCashierPin(pin: string): {
+  ok: boolean;
+  token?: string;
+  label?: string;
+  role?: string | null;
+  lockedForMs?: number;
+} {
+  const lockout = getPinLockout();
+  if (lockout.lockedUntil && new Date(lockout.lockedUntil).getTime() > Date.now()) {
+    return { ok: false, lockedForMs: new Date(lockout.lockedUntil).getTime() - Date.now() };
+  }
+
   const hash = hashPin(pin);
   const row = db
-    .prepare('SELECT label, token FROM cashier_pins WHERE pin_hash = ?')
-    .get(hash) as { label: string; token: string } | undefined;
-  if (!row) return { ok: false };
-  return { ok: true, token: row.token, label: row.label };
+    .prepare('SELECT label, token, role FROM cashier_pins WHERE pin_hash = ?')
+    .get(hash) as { label: string; token: string; role: string | null } | undefined;
+
+  if (row) {
+    setJsonSetting('pin-lockout', { failedAttempts: 0, lockedUntil: null });
+    return { ok: true, token: decryptToken(row.token), label: row.label, role: row.role };
+  }
+
+  const failedAttempts = lockout.failedAttempts + 1;
+  const lockedUntil = failedAttempts >= PIN_MAX_ATTEMPTS ? new Date(Date.now() + PIN_LOCKOUT_MS).toISOString() : null;
+  setJsonSetting('pin-lockout', { failedAttempts: lockedUntil ? 0 : failedAttempts, lockedUntil });
+  return { ok: false, lockedForMs: lockedUntil ? PIN_LOCKOUT_MS : undefined };
 }
 
 export function clearCashierPins() {

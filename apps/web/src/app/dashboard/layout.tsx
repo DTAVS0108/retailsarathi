@@ -11,6 +11,8 @@ import { itemMatchingPath, sectionContainingPath } from './_components/nav-secti
 import { MobileBottomNav, SidebarNav } from './_components/responsive-shell';
 import { FloatingActionDock } from './_components/floating-action-dock';
 import { FloatingCalculator, requestOpenCalculator } from './_components/floating-calculator';
+import { CommandPalette, requestOpenCommandPalette } from './_components/command-palette';
+import { NotificationBell } from './_components/notification-bell';
 import { PartySearch } from './_components/party-search';
 import { useWebAppearance } from '@/lib/use-web-appearance';
 import { getWebTheme } from '@/lib/appearance-prefs';
@@ -328,6 +330,7 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
           <div className="hidden min-w-[8rem] max-w-[10rem] sm:block">
             <PartySearch variant="onHeader" />
           </div>
+          <NotificationBell light />
           <button
             type="button"
             className="inline-flex h-10 w-10 items-center justify-center rounded-xl"
@@ -361,6 +364,22 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
           }}
         >
           <PartySearch className="max-w-sm flex-1" variant="onHeader" />
+          <button
+            type="button"
+            onClick={() => requestOpenCommandPalette()}
+            className="hidden shrink-0 items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-xs font-medium opacity-90 transition hover:opacity-100 lg:inline-flex"
+            style={{ borderColor: 'color-mix(in srgb, var(--rs-header-ink) 22%, transparent)', color: 'var(--rs-header-ink)' }}
+            aria-label="Open command palette"
+          >
+            <NavIcon name="search" className="h-3.5 w-3.5" />
+            <span>Search</span>
+            <kbd
+              className="rounded border px-1 text-[10px] opacity-80"
+              style={{ borderColor: 'color-mix(in srgb, var(--rs-header-ink) 30%, transparent)' }}
+            >
+              Ctrl K
+            </kbd>
+          </button>
           <div className="flex min-w-0 flex-1 items-center gap-2 text-sm opacity-90">
             <NavIcon name={activeItem?.icon ?? 'overview'} className="h-4 w-4" />
             <span className="font-medium truncate">{shopName}</span>
@@ -375,6 +394,7 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
               </>
             ) : null}
           </div>
+          <NotificationBell light />
           <Link
             href="/dashboard/pos"
             className="inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-semibold shadow-sm transition hover:opacity-95"
@@ -394,6 +414,7 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
         <MobileBottomNav />
         <FloatingActionDock />
         <FloatingCalculator showFab={appearance.showCalculatorFab} />
+        <CommandPalette />
       </div>
     </div>
   );

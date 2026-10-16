@@ -12,6 +12,9 @@ datasource db {
 model Tenant {
   id                String   @id @default(cuid())
   name              String
+  /** Short, readable public identifier (e.g. "tyagi-electric-works") — used in customer-facing
+   *  URLs like the repair queue display, instead of the internal cuid. */
+  slug              String?  @unique
   gstin             String?
   stateCode         String   @default("27")
   compositionScheme Boolean  @default(false)
@@ -21,15 +24,20 @@ model Tenant {
   logoUrl           String?
   defaultInvoiceTemplate String @default("classic")
   mobileInvoiceTemplate  String @default("retail-bold")
+  invoiceCopyCount       Int      @default(1)
   invoiceDisplayOptions  Json     @default("{}")
   bankName               String?
   bankAccountNo          String?
   bankIfsc               String?
   bankBranch             String?
+  /** UPI VPA (e.g. shopname@okhdfcbank) — powers the scan-to-pay QR on the POS checkout screen */
+  upiId                  String?
   /** Tax invoice / credit note format — see @retail-sarathi/gst-engine invoice-numbering */
   invoiceNumbering       Json     @default("{}")
   /** Sales journal auto-posting toggles */
   ledgerSettings         Json     @default("{}")
+  /** Expected daily check-in time (HH:mm, 24h) used to flag late attendance when no shift is assigned. */
+  expectedCheckInTime    String?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
@@ -41,6 +49,10 @@ model Tenant {
   customers             Customer[]
   invoices              Invoice[]
   repairJobs            RepairJob[]
+  devices               Device[]
+  repairServiceTypes    RepairServiceType[]
+  loanerDevices         LoanerDevice[]
+  loanerCheckouts       LoanerCheckout[]
   notificationTemplates NotificationTemplate[]
   accounts              Account[]
   journalEntries        JournalEntry[]
@@ -64,6 +76,10 @@ model Tenant {
   productEnrichments    ProductEnrichment[]
   supplierProductAliases SupplierProductAlias[]
   purchaseBills         PurchaseBill[]
+  leaveRequests         LeaveRequest[]
+  shifts                Shift[]
+  shiftAssignments      ShiftAssignment[]
+  payrollRuns           PayrollRun[]
   supplierPayments      SupplierPayment[]
   supplierLedgerEntries SupplierLedgerEntry[]
   customerPayments      CustomerPayment[]
@@ -74,6 +90,11 @@ model Tenant {
   gstr2bImports         Gstr2bImport[]
   productBatches        ProductBatch[]
   subscriptionStatus    SubscriptionStatus @default(TRIAL)
+  subscriptionInvoices  SubscriptionInvoice[]
+  /** Platform-admin kill switch — blocks tenant JWT validation and API access when true. */
+  isSuspended           Boolean   @default(false)
+  suspendedAt           DateTime?
+  suspendedReason       String?
 }
 
 /// Atomic invoice / credit-note counters per FY or period.
@@ -99,8 +120,10 @@ model Branch {
   stateCode String
   isDefault Boolean  @default(false)
   createdAt DateTime @default(now())
+  managerId String?
 
   tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  manager    User?       @relation("BranchManager", fields: [managerId], references: [id], onDelete: SetNull)
   users      User[]
   invoices   Invoice[]
   repairJobs RepairJob[]
@@ -111,6 +134,7 @@ model Branch {
   staffAttendance StaffAttendance[]
   purchaseOrders PurchaseOrder[]
   stockTakes     StockTake[]
+  loanerDevices   LoanerDevice[]
 
   @@index([tenantId])
 }
@@ -132,12 +156,26 @@ model User {
   role         UserRole @default(CASHIER)
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
+  phone                 String?
+  address               String?
+  dateOfJoining         DateTime?
+  monthlySalary         Decimal?  @db.Decimal(12, 2)
+  /** Per-user commission rate override — falls back to a role default in code when unset. */
+  commissionPct         Decimal?  @db.Decimal(5, 2)
+  photoUrl              String?
+  emergencyContactName  String?
+  emergencyContactPhone String?
 
   tenant       Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   branch       Branch?     @relation(fields: [branchId], references: [id])
+  managedBranches Branch[] @relation("BranchManager")
   repairJobs   RepairJob[] @relation("TechnicianJobs")
   attendance   StaffAttendance[]
   commissions  StaffCommission[]
+  leaveRequests LeaveRequest[] @relation("LeaveRequester")
+  leaveDecisions LeaveRequest[] @relation("LeaveApprover")
+  shiftAssignments ShiftAssignment[]
+  payslips     Payslip[]
   purchaseBillsCreated PurchaseBill[] @relation("PurchaseBillCreatedBy")
   customersCreated     Customer[]     @relation("CustomerCreatedBy")
   customersUpdated     Customer[]     @relation("CustomerUpdatedBy")
@@ -526,6 +564,7 @@ model ProductBatch {
 
   tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  stockLedgerEntries StockLedger[]
 
   @@unique([productId, batchNumber])
   @@index([tenantId, productId])
@@ -581,10 +620,20 @@ model StockLedger {
   referenceId String?
   notes       String?
   createdAt   DateTime          @default(now())
+  /** Which batch this movement touched — set only for trackBatch products; a single sale line
+      spanning multiple batches (FEFO) becomes multiple ledger rows, one per batch. */
+  batchId       String?
+  /** Which invoice line caused this movement — lets a partial return/cancel look up exactly which
+      batches (and how much of each) to reverse for that specific line. */
+  invoiceLineId String?
 
-  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product     Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  batch       ProductBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  invoiceLine InvoiceLine?  @relation(fields: [invoiceLineId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, productId])
+  @@index([batchId])
+  @@index([invoiceLineId])
 }
 
 // ─── Customers & CRM ─────────────────────────────────────────────
@@ -627,6 +676,8 @@ model Customer {
   updatedBy  User?       @relation("CustomerUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
   invoices   Invoice[]
   repairJobs RepairJob[]
+  devices    Device[]
+  loanerCheckouts LoanerCheckout[]
   loyaltyTransactions LoyaltyTransaction[]
   payments       CustomerPayment[]
   ledgerEntries  CustomerLedgerEntry[]
@@ -635,6 +686,105 @@ model Customer {
   @@index([tenantId, phone])
   @@index([tenantId, createdByUserId])
   @@index([tenantId, updatedByUserId])
+}
+
+enum LoanerDeviceStatus {
+  AVAILABLE
+  ON_LOAN
+  IN_REPAIR
+  RETIRED
+}
+
+enum LoanerDeviceCondition {
+  EXCELLENT
+  GOOD
+  FAIR
+  POOR
+}
+
+/**
+ * A shop-owned device lent to a customer while their own device is being repaired. Deliberately
+ * not modeled on Product/ProductSerial — loaners aren't sold, priced, or GST-relevant, so this
+ * stays a simple pool with no StockLedger-style movement log (status + timestamps is enough
+ * audit trail for a non-sale asset).
+ */
+model LoanerDevice {
+  id         String                @id @default(cuid())
+  tenantId   String
+  branchId   String?
+  brand      String?
+  model      String
+  identifier String?
+  condition  LoanerDeviceCondition @default(GOOD)
+  status     LoanerDeviceStatus    @default(AVAILABLE)
+  notes      String?
+  createdAt  DateTime              @default(now())
+  updatedAt  DateTime              @updatedAt
+
+  tenant Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch Branch?          @relation(fields: [branchId], references: [id])
+  loans  LoanerCheckout[]
+
+  @@index([tenantId, status])
+}
+
+model LoanerCheckout {
+  id               String                 @id @default(cuid())
+  tenantId         String
+  loanerDeviceId   String
+  repairJobId      String
+  customerId       String
+  checkedOutAt     DateTime               @default(now())
+  expectedReturnAt DateTime?
+  returnedAt       DateTime?
+  conditionOut     LoanerDeviceCondition?
+  conditionIn      LoanerDeviceCondition?
+  notes            String?
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  loanerDevice LoanerDevice @relation(fields: [loanerDeviceId], references: [id])
+  repairJob    RepairJob    @relation(fields: [repairJobId], references: [id])
+  customer     Customer     @relation(fields: [customerId], references: [id])
+
+  @@index([tenantId, loanerDeviceId])
+  @@index([tenantId, repairJobId])
+}
+
+/** A common repair service offered by the shop, for quick estimate prefill at intake. */
+model RepairServiceType {
+  id                    String   @id @default(cuid())
+  tenantId              String
+  name                  String
+  defaultPrice          Decimal? @db.Decimal(12, 2)
+  typicalTurnaroundDays Int?
+  isActive              Boolean  @default(true)
+  createdAt             DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  repairJobs RepairJob[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+}
+
+/** A customer's device, tracked across multiple repair visits over time. */
+model Device {
+  id           String   @id @default(cuid())
+  tenantId     String
+  customerId   String
+  brand        String?
+  model        String
+  imei         String?
+  serialNumber String?
+  notes        String?
+  createdAt    DateTime @default(now())
+
+  tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer   Customer    @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  repairJobs RepairJob[]
+
+  @@index([tenantId, customerId])
+  @@index([tenantId, imei])
 }
 
 enum CustomerLedgerType {
@@ -810,6 +960,9 @@ model Invoice {
   originalInvoiceId String?
   /** Restocking / handling fee retained on return (credit note only). */
   processingFee     Decimal       @db.Decimal(12, 2) @default(0)
+  /** Client-supplied key for retry-safe creation (Desktop/Mobile offline+online paths) — a
+      repeated create with the same key returns the original invoice instead of duplicating it. */
+  idempotencyKey    String?       @unique
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
 
@@ -822,6 +975,7 @@ model Invoice {
   payments        Payment[]
   customerLedgerEntries CustomerLedgerEntry[]
   customerPaymentAllocations CustomerPaymentAllocation[]
+  repairJob       RepairJob?
 
   @@unique([tenantId, invoiceNumber])
   @@index([tenantId, createdAt])
@@ -851,9 +1005,14 @@ model InvoiceLine {
   serialNumbers  String[] @default([])
   /** Links credit-note line back to original tax invoice line. */
   sourceInvoiceLineId String?
+  /** Product.purchasePrice at the moment this line was created — lets margin reports use
+      price-at-time-of-sale instead of drifting with later purchase-price changes. Nullable:
+      legacy rows predating this field have no snapshot. */
+  costPriceSnapshot Decimal? @db.Decimal(12, 2)
 
   invoice Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   product Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  stockLedgerEntries StockLedger[]
 
   @@index([invoiceId])
   @@index([productId])
@@ -865,6 +1024,7 @@ enum PaymentMethod {
   CARD
   CREDIT
   BANK_TRANSFER
+  EMI
 }
 
 model Payment {
@@ -885,8 +1045,10 @@ model Payment {
 enum RepairStatus {
   RECEIVED
   DIAGNOSED
+  AWAITING_CUSTOMER_APPROVAL
   AWAITING_PARTS
   IN_REPAIR
+  ON_HOLD
   READY
   DELIVERED
   CANCELLED
@@ -898,6 +1060,8 @@ model RepairJob {
   branchId        String
   customerId      String
   technicianId    String?
+  deviceId        String?
+  serviceTypeId   String?
   jobNumber       String
   deviceModel     String
   imei            String?
@@ -906,13 +1070,19 @@ model RepairJob {
   status          RepairStatus @default(RECEIVED)
   estimateAmount  Decimal?     @db.Decimal(12, 2)
   finalAmount     Decimal?     @db.Decimal(12, 2)
+  /** Deposit collected at intake (e.g. for parts) — deducted from the final invoice's payment total. */
+  advancePaid     Decimal?     @db.Decimal(12, 2)
   warrantyDays    Int          @default(30)
   customerApproved Boolean?
   receivedAt      DateTime     @default(now())
   deliveredAt     DateTime?
   warrantyEndsAt  DateTime?
   photoUrls       String[]     @default([])
-  linkedInvoiceId String?
+  linkedInvoiceId String?      @unique
+  /** Structured pre-existing-damage capture at intake (screen condition, powers-on, missing parts, etc). */
+  intakeChecklist Json?
+  /** Set when this job is a warranty comeback for a prior DELIVERED job on the same device. */
+  reopenedFromId  String?
   notes           String?
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
@@ -921,11 +1091,18 @@ model RepairJob {
   branch       Branch                @relation(fields: [branchId], references: [id])
   customer     Customer              @relation(fields: [customerId], references: [id])
   technician   User?                 @relation("TechnicianJobs", fields: [technicianId], references: [id])
+  device        Device?              @relation(fields: [deviceId], references: [id])
+  serviceType   RepairServiceType?   @relation(fields: [serviceTypeId], references: [id])
+  linkedInvoice Invoice?             @relation(fields: [linkedInvoiceId], references: [id], onDelete: SetNull)
+  reopenedFrom  RepairJob?           @relation("RepairReopen", fields: [reopenedFromId], references: [id])
+  reopenedBy    RepairJob[]          @relation("RepairReopen")
   statusHistory RepairStatusHistory[]
   partsUsed    RepairPartUsed[]
+  loanerCheckouts LoanerCheckout[]
 
   @@unique([tenantId, jobNumber])
   @@index([tenantId, status])
+  @@index([tenantId, deviceId])
 }
 
 model RepairStatusHistory {
@@ -993,6 +1170,8 @@ model NotificationLog {
   status     NotificationStatus @default(PENDING)
   error      String?
   sentAt     DateTime?
+  deliveredAt DateTime?
+  providerMessageId String?
   createdAt  DateTime           @default(now())
 
   template NotificationTemplate? @relation(fields: [templateId], references: [id])
@@ -1231,6 +1410,8 @@ model BranchStock {
   branchId  String
   productId String
   quantity  Decimal @db.Decimal(12, 3) @default(0)
+  /** Per-branch low-stock threshold; falls back to the product's global lowStockThreshold when unset. */
+  reorderLevel Decimal? @db.Decimal(12, 3)
 
   tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   branch  Branch  @relation(fields: [branchId], references: [id], onDelete: Cascade)
@@ -1361,6 +1542,9 @@ model EcommerceChannel {
   isActive     Boolean           @default(true)
   lastSyncAt   DateTime?
   createdAt    DateTime          @default(now())
+  /** Bearer token for the inbound webhook receiver (CUSTOM platform only) — external systems
+      POST real orders here instead of relying on a fabricated demo sync. */
+  webhookToken String?           @unique
 
   tenant Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   orders EcommerceOrder[]
@@ -1394,6 +1578,7 @@ model StaffAttendance {
   branchId  String
   checkIn   DateTime
   checkOut  DateTime?
+  isLate    Boolean   @default(false)
   notes     String?
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -1413,11 +1598,108 @@ model StaffCommission {
   repairTotal   Decimal  @db.Decimal(12, 2) @default(0)
   commissionPct Decimal  @db.Decimal(5, 2) @default(2)
   commissionAmt Decimal  @db.Decimal(12, 2) @default(0)
+  invoiceIds    String[] @default([])
+  repairJobIds  String[] @default([])
   createdAt     DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, userId])
+}
+
+// ─── People & Ops: Leave, Shifts, Payroll ───────────────────────────
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+model LeaveRequest {
+  id           String      @id @default(cuid())
+  tenantId     String
+  userId       String
+  leaveType    String
+  fromDate     DateTime
+  toDate       DateTime
+  reason       String?
+  status       LeaveStatus @default(PENDING)
+  approvedById String?
+  decidedAt    DateTime?
+  createdAt    DateTime    @default(now())
+
+  tenant     Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user       User   @relation("LeaveRequester", fields: [userId], references: [id], onDelete: Cascade)
+  approvedBy User?  @relation("LeaveApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, userId])
+}
+
+model Shift {
+  id        String   @id @default(cuid())
+  tenantId  String
+  branchId  String?
+  name      String
+  startTime String
+  endTime   String
+  createdAt DateTime @default(now())
+
+  tenant      Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  assignments ShiftAssignment[]
+
+  @@index([tenantId])
+}
+
+model ShiftAssignment {
+  id       String   @id @default(cuid())
+  tenantId String
+  userId   String
+  shiftId  String
+  date     DateTime
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shift  Shift  @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@index([tenantId])
+}
+
+enum PayrollStatus {
+  DRAFT
+  FINALIZED
+}
+
+model PayrollRun {
+  id          String        @id @default(cuid())
+  tenantId    String
+  periodStart DateTime
+  periodEnd   DateTime
+  status      PayrollStatus @default(DRAFT)
+  createdAt   DateTime      @default(now())
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  payslips Payslip[]
+
+  @@index([tenantId, status])
+}
+
+model Payslip {
+  id                   String    @id @default(cuid())
+  payrollRunId         String
+  userId               String
+  baseSalary           Decimal   @db.Decimal(12, 2) @default(0)
+  commissionAmt        Decimal   @db.Decimal(12, 2) @default(0)
+  unpaidLeaveDeduction Decimal   @db.Decimal(12, 2) @default(0)
+  netPay               Decimal   @db.Decimal(12, 2) @default(0)
+  paidAt               DateTime?
+
+  payrollRun PayrollRun @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([payrollRunId, userId])
+  @@index([payrollRunId])
 }
 
 // ─── Phase 5: Trade-in ─────────────────────────────────────────────
@@ -1487,6 +1769,23 @@ model TenantSubscription {
   plan   SubscriptionPlan @relation(fields: [planId], references: [id])
 }
 
+/// Demo-mode billing history — no real payment gateway exists yet, so every row is `mode: "demo"`
+/// and `amount` is informational (prorated math), never actually charged.
+model SubscriptionInvoice {
+  id               String   @id @default(cuid())
+  tenantId         String
+  planCode         String
+  action           String   // 'CHANGE_PLAN' | 'CANCEL'
+  amount           Decimal  @db.Decimal(10, 2)
+  previousPlanCode String?
+  mode             String   @default("demo")
+  createdAt        DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt])
+}
+
 // ─── Phase 5: SaaS platform admin ──────────────────────────────────
 
 model PlatformAdmin {
@@ -1496,6 +1795,24 @@ model PlatformAdmin {
   name         String
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
+
+  auditLogs PlatformAuditLog[]
+}
+
+/// Records every platform-admin mutation (suspend/reactivate a tenant, resolve a ticket, ...).
+model PlatformAuditLog {
+  id         String   @id @default(cuid())
+  adminId    String
+  action     String   // 'SUSPEND_TENANT' | 'REACTIVATE_TENANT' | 'RESOLVE_TICKET' | ...
+  targetType String   // 'TENANT' | 'TICKET'
+  targetId   String
+  detail     Json?
+  createdAt  DateTime @default(now())
+
+  admin PlatformAdmin @relation(fields: [adminId], references: [id], onDelete: Cascade)
+
+  @@index([targetType, targetId])
+  @@index([createdAt])
 }
 
 enum TicketStatus {

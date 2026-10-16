@@ -26,8 +26,8 @@ export class InvoiceLineDto {
 }
 
 export class PaymentDto {
-  @ApiProperty({ enum: ['CASH', 'UPI', 'CARD', 'CREDIT', 'BANK_TRANSFER'] })
-  @IsEnum(['CASH', 'UPI', 'CARD', 'CREDIT', 'BANK_TRANSFER'])
+  @ApiProperty({ enum: ['CASH', 'UPI', 'CARD', 'CREDIT', 'BANK_TRANSFER', 'EMI'] })
+  @IsEnum(['CASH', 'UPI', 'CARD', 'CREDIT', 'BANK_TRANSFER', 'EMI'])
   method!: string;
 
   @ApiProperty() @Type(() => Number) @IsNumber() @Min(0) amount!: number;
@@ -43,6 +43,9 @@ export class CreateInvoiceDto {
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
   /** Redeem loyalty points (1 point ≈ ₹1) as bill discount before payment check */
   @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsNumber() @Min(0) loyaltyPointsToRedeem?: number;
+  /** Client-generated key for retry-safe creation (Desktop/Mobile offline+online paths). A
+      repeated call with the same key returns the original invoice instead of creating a duplicate. */
+  @ApiPropertyOptional() @IsOptional() @IsString() idempotencyKey?: string;
   @ApiProperty({ type: [InvoiceLineDto] })
   @IsArray()
   @ValidateNested({ each: true })
@@ -55,4 +58,9 @@ export class CreateInvoiceDto {
   @ValidateNested({ each: true })
   @Type(() => PaymentDto)
   payments?: PaymentDto[];
+}
+
+export class UpdateTransportDto {
+  @ApiPropertyOptional() @IsOptional() @IsString() ewayBillNo?: string | null;
+  @ApiPropertyOptional() @IsOptional() @IsString() vehicleNo?: string | null;
 }

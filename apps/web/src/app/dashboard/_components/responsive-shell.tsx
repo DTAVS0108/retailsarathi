@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { NavIcon } from './nav-icons';
-import { NAV_SECTIONS } from './nav-sections';
+import { NAV_SECTIONS, itemMatchingPath } from './nav-sections';
 
 function isActivePath(pathname: string | null, href: string) {
   if (!pathname) return false;
@@ -32,6 +32,9 @@ export function SidebarNav({
   collapsed?: boolean;
 }) {
   const pathname = usePathname();
+  // Pick the single most-specific matching item (e.g. /dashboard/repairs/analytics wins over
+  // the shorter /dashboard/repairs) so two sibling nav links never highlight at once.
+  const activeItem = itemMatchingPath(pathname);
 
   if (collapsed) {
     return (
@@ -137,7 +140,7 @@ export function SidebarNav({
               <div className="overflow-hidden">
                 <div className="relative ml-[1.35rem] border-l border-rs-border py-1 pl-3">
                   {section.items.map((item) => {
-                    const active = isActivePath(pathname, item.href);
+                    const active = activeItem?.href === item.href;
                     return (
                       <Link
                         key={item.href}

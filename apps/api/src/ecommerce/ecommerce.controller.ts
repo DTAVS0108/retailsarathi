@@ -11,12 +11,14 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { EcommerceService } from './ecommerce.service';
-import { CurrentUser, JwtPayload } from '../common/decorators';
+import { CurrentUser, JwtPayload, Roles } from '../common/decorators';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RolesGuard } from '../common/roles.guard';
 
 @ApiTags('ecommerce')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('OWNER', 'MANAGER')
 @Controller('ecommerce')
 export class EcommerceController {
   constructor(private ecommerce: EcommerceService) {}
@@ -27,6 +29,7 @@ export class EcommerceController {
   }
 
   @Get('platforms')
+  @Roles('OWNER', 'MANAGER', 'CASHIER', 'TECHNICIAN')
   platforms() {
     return this.ecommerce.getPlatformCatalog();
   }
@@ -65,6 +68,7 @@ export class EcommerceController {
   }
 
   @Get('orders')
+  @Roles('OWNER', 'MANAGER', 'CASHIER')
   orders(
     @CurrentUser() user: JwtPayload,
     @Query('channelId') channelId?: string,
@@ -74,6 +78,7 @@ export class EcommerceController {
   }
 
   @Patch('orders/:id')
+  @Roles('OWNER', 'MANAGER', 'CASHIER')
   updateOrder(
     @CurrentUser() user: JwtPayload,
     @Param('id') id: string,

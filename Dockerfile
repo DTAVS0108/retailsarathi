@@ -37,8 +37,14 @@ COPY packages/ui/package.json packages/ui/
 
 RUN npm ci --omit=dev --workspace=@retail-sarathi/api --include-workspace-root
 
+# Chromium for server-side invoice PDF rendering (apps/api/src/pdf) — installs both the browser
+# binary and the Linux shared libraries it needs at runtime (--with-deps runs apt-get itself).
+# Adds ~300-500MB to this image and a minute or two of build time.
+RUN npx playwright install --with-deps chromium
+
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
 COPY --from=builder /app/apps/api/prisma ./apps/api/prisma
+COPY apps/api/ocr-data ./apps/api/ocr-data
 COPY --from=builder /app/packages/gst-engine/dist ./packages/gst-engine/dist
 COPY --from=builder /app/packages/scan-engine/dist ./packages/scan-engine/dist
 COPY --from=builder /app/packages/types/dist ./packages/types/dist

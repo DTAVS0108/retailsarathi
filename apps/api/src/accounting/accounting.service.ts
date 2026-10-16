@@ -89,8 +89,17 @@ export class AccountingService {
       if (e.creditAccount.type === 'INCOME') {
         income[e.creditAccount.name] = (income[e.creditAccount.name] ?? 0) + amount;
       }
+      // A debit to an income account is a reversal (e.g. cancelling an invoice reverses its
+      // auto-posted sale) — net it out, or a cancelled sale would stay counted as income forever.
+      if (e.debitAccount.type === 'INCOME') {
+        income[e.debitAccount.name] = (income[e.debitAccount.name] ?? 0) - amount;
+      }
       if (e.debitAccount.type === 'EXPENSE') {
         expenses[e.debitAccount.name] = (expenses[e.debitAccount.name] ?? 0) + amount;
+      }
+      // Symmetric case: a credit to an expense account reverses a prior expense.
+      if (e.creditAccount.type === 'EXPENSE') {
+        expenses[e.creditAccount.name] = (expenses[e.creditAccount.name] ?? 0) - amount;
       }
     }
 
@@ -271,19 +280,27 @@ export class AccountingService {
       .replace(/"/g, '&quot;');
   }
 
-  async autoPostSaleIfEnabled(tenantId: string, invoiceId: string, amount: number) {
+  async autoPostSaleIfEnabled(
+    tenantId: string,
+    invoiceId: string,
+    split: { cashAmount: number; creditAmount: number },
+  ) {
     const settings = await this.getLedgerSettings(tenantId);
     if (!settings.autoPostSales) return null;
     if (settings.seedAccountsOnFirstSale) {
       await this.seedDefaultAccounts(tenantId);
     }
-    return this.autoPostSale(tenantId, invoiceId, amount);
+    return this.autoPostSale(tenantId, invoiceId, split);
   }
 
-  async reverseSaleIfEnabled(tenantId: string, invoiceId: string, amount: number) {
+  async reverseSaleIfEnabled(
+    tenantId: string,
+    invoiceId: string,
+    split: { cashAmount: number; creditAmount: number },
+  ) {
     const settings = await this.getLedgerSettings(tenantId);
     if (!settings.autoPostCreditNotes) return null;
-    return this.reverseSale(tenantId, invoiceId, amount);
+    return this.reverseSale(tenantId, invoiceId, split);
   }
 
   private async getLedgerSettings(tenantId: string) {
@@ -294,47 +311,95 @@ export class AccountingService {
     return mergeLedgerSettings(tenant?.ledgerSettings);
   }
 
-  async autoPostSale(tenantId: string, invoiceId: string, amount: number) {
-    await this.seedDefaultAccounts(tenantId);
-    const salesAccount = await this.prisma.account.findFirst({
-      where: { tenantId, code: '4000' },
-    });
-    const cashAccount = await this.prisma.account.findFirst({
-      where: { tenantId, code: '1000' },
-    });
+  /**
+   * A sale paid partly or fully on credit (udhaar) never receives cash at the time of
+   * sale — debiting Cash for the full grand total (as if it were all collected) would
+   * overstate Cash in Hand. The credit-extended portion debits Accounts Receivable
+   * instead; the later collection (autoPostCollectionIfEnabled) credits it back down.
+   */
+  async autoPostSale(
+    tenantId: string,
+    invoiceId: string,
+    split: { cashAmount: number; creditAmount: number },
+  ) {
+    const map = await this.accountsByCode(tenantId, ['1000', '1100', '4000']);
+    const cashAccount = map.get('1000');
+    const arAccount = map.get('1100');
+    const salesAccount = map.get('4000');
     if (!salesAccount || !cashAccount) return null;
 
-    return this.createJournalEntry(tenantId, {
-      date: new Date().toISOString().split('T')[0],
-      description: `Auto-post sale invoice ${invoiceId}`,
-      debitAccountId: cashAccount.id,
-      creditAccountId: salesAccount.id,
-      amount,
-      referenceType: 'invoice',
-      referenceId: invoiceId,
-    });
+    const date = new Date().toISOString().split('T')[0];
+    const entries = [];
+    if (split.cashAmount > 0.009) {
+      entries.push(
+        await this.createJournalEntry(tenantId, {
+          date,
+          description: `Auto-post sale invoice ${invoiceId}`,
+          debitAccountId: cashAccount.id,
+          creditAccountId: salesAccount.id,
+          amount: split.cashAmount,
+          referenceType: 'invoice',
+          referenceId: invoiceId,
+        }),
+      );
+    }
+    if (split.creditAmount > 0.009 && arAccount) {
+      entries.push(
+        await this.createJournalEntry(tenantId, {
+          date,
+          description: `Auto-post sale invoice ${invoiceId} (credit extended)`,
+          debitAccountId: arAccount.id,
+          creditAccountId: salesAccount.id,
+          amount: split.creditAmount,
+          referenceType: 'invoice',
+          referenceId: invoiceId,
+        }),
+      );
+    }
+    return entries;
   }
 
-  /** Reverse a prior auto-posted sale (cancel). */
-  async reverseSale(tenantId: string, invoiceId: string, amount: number) {
-    await this.seedDefaultAccounts(tenantId);
-    const salesAccount = await this.prisma.account.findFirst({
-      where: { tenantId, code: '4000' },
-    });
-    const cashAccount = await this.prisma.account.findFirst({
-      where: { tenantId, code: '1000' },
-    });
+  /** Reverse a prior auto-posted sale (cancel) — mirrors whatever cash/credit split it was posted with. */
+  async reverseSale(
+    tenantId: string,
+    invoiceId: string,
+    split: { cashAmount: number; creditAmount: number },
+  ) {
+    const map = await this.accountsByCode(tenantId, ['1000', '1100', '4000']);
+    const cashAccount = map.get('1000');
+    const arAccount = map.get('1100');
+    const salesAccount = map.get('4000');
     if (!salesAccount || !cashAccount) return null;
 
-    return this.createJournalEntry(tenantId, {
-      date: new Date().toISOString().split('T')[0],
-      description: `Reverse cancelled invoice ${invoiceId}`,
-      debitAccountId: salesAccount.id,
-      creditAccountId: cashAccount.id,
-      amount,
-      referenceType: 'invoice_cancel',
-      referenceId: invoiceId,
-    });
+    const date = new Date().toISOString().split('T')[0];
+    const entries = [];
+    if (split.cashAmount > 0.009) {
+      entries.push(
+        await this.createJournalEntry(tenantId, {
+          date,
+          description: `Reverse cancelled invoice ${invoiceId}`,
+          debitAccountId: salesAccount.id,
+          creditAccountId: cashAccount.id,
+          amount: split.cashAmount,
+          referenceType: 'invoice_cancel',
+          referenceId: invoiceId,
+        }),
+      );
+    }
+    if (split.creditAmount > 0.009 && arAccount) {
+      entries.push(
+        await this.createJournalEntry(tenantId, {
+          date,
+          description: `Reverse cancelled invoice ${invoiceId} (credit extended)`,
+          debitAccountId: salesAccount.id,
+          creditAccountId: arAccount.id,
+          amount: split.creditAmount,
+          referenceType: 'invoice_cancel',
+          referenceId: invoiceId,
+        }),
+      );
+    }
+    return entries;
   }
 
   private async accountsByCode(tenantId: string, codes: string[]) {

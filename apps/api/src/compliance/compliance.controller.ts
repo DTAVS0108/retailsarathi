@@ -1,12 +1,14 @@
 import { Controller, Get, Post, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { ComplianceService } from './compliance.service';
-import { CurrentUser, JwtPayload } from '../common/decorators';
+import { CurrentUser, JwtPayload, Roles } from '../common/decorators';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RolesGuard } from '../common/roles.guard';
 
 @ApiTags('compliance')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('OWNER', 'MANAGER')
 @Controller('compliance')
 export class ComplianceController {
   constructor(private compliance: ComplianceService) {}
@@ -17,21 +19,25 @@ export class ComplianceController {
   }
 
   @Get('einvoice/status')
+  @Roles('OWNER', 'MANAGER', 'CASHIER')
   einvoiceStatus() {
     return this.compliance.getEinvoiceStatus();
   }
 
   @Get('invoices/:id/qr')
+  @Roles('OWNER', 'MANAGER', 'CASHIER')
   invoiceQr(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
     return this.compliance.generateInvoiceQr(user.tenantId, id);
   }
 
   @Post('invoices/:id/einvoice')
+  @Roles('OWNER', 'MANAGER', 'CASHIER')
   einvoice(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
     return this.compliance.requestEinvoice(user.tenantId, id, user.sub);
   }
 
   @Post('invoices/:id/eway-bill')
+  @Roles('OWNER', 'MANAGER', 'CASHIER')
   ewayBill(
     @CurrentUser() user: JwtPayload,
     @Param('id') id: string,

@@ -39,14 +39,20 @@
   },
 
   "scripts": {
+
     "build": "tsc",
+
     "dev": "tsc --watch",
+
     "generate:invoice-previews": "node ./scripts/generate-invoice-previews.cjs"
+
   },
 
   "dependencies": {
 
-    "@retail-sarathi/gst-engine": "*"
+    "@retail-sarathi/gst-engine": "*",
+
+    "jsbarcode": "^3.12.3"
 
   },
 

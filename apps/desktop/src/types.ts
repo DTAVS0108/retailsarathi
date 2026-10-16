@@ -18,15 +18,26 @@ export interface LocalProduct {
   serials?: Array<{ id?: string; serialNumber: string }>;
 }
 
+export type MigrationStatus =
+  | { state: 'not_needed' }
+  | { state: 'migrated'; justSwapped: boolean }
+  | { state: 'blocked'; pendingCount: number; failedCount: number };
+
 declare global {
   interface Window {
     retailSarathi: {
+      /** Whether the local cache DB is still an unmigrated plaintext file (blocks the normal POS UI). */
+      getMigrationStatus: () => Promise<MigrationStatus>;
+      /** Attempts to drain the outbox and swap to the encrypted DB; call again once online. */
+      retryMigration: (token: string, apiUrl: string) => Promise<MigrationStatus>;
       getProducts: () => Promise<LocalProduct[]>;
       saveInvoice: (invoice: unknown) => Promise<unknown>;
       getOutbox: () => Promise<unknown[]>;
       /** Returns count of outbox items waiting to sync */
       getOutboxCount: () => Promise<number>;
-      sync: (token: string, apiUrl: string) => Promise<{ pushed: number; pulled?: number }>;
+      /** Sum of quantities still queued (unsynced) per productId — for a realistic sellable count */
+      getPendingQtyByProduct: () => Promise<Record<string, number>>;
+      sync: (token: string, apiUrl: string) => Promise<{ pushed: number; pulled?: number; failed?: number }>;
       getSetting: (key: string) => Promise<string | null>;
       setSetting: (key: string, value: string) => Promise<boolean>;
       getJsonSetting: <T = unknown>(key: string) => Promise<T | null>;
@@ -55,12 +66,12 @@ declare global {
       >;
       /** Open in-app A4 print preview (Print… / Save PDF). Windows OS dialog has no preview. */
       printHtml?: (html: string) => Promise<{ ok: boolean; error?: string }>;
-      /** Verify a cashier PIN; returns ok + optional JWT token on success */
-      verifyPin: (pin: string) => Promise<{ ok: boolean; token?: string }>;
+      /** Verify a cashier PIN; returns ok + optional JWT token/role on success, or a lockout window on failure */
+      verifyPin: (pin: string) => Promise<{ ok: boolean; token?: string; label?: string; role?: string | null; lockedForMs?: number }>;
       /** Returns true if any cashier PINs have been registered on this device */
       hasCashierPins: () => Promise<boolean>;
       /** Register or update a cashier PIN; requires a valid manager token */
-      setCashierPin: (params: { label?: string; pin: string; token: string }) => Promise<boolean>;
+      setCashierPin: (params: { label?: string; pin: string; token: string; role?: string }) => Promise<boolean>;
       clearCashierPins?: () => Promise<boolean>;
       openExternal?: (url: string) => Promise<void>;
       checkForUpdates?: () => Promise<{ available: boolean; version?: string | null } | null>;

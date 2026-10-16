@@ -2,6 +2,7 @@
 import { AppLoader } from '@/app/_components/app-loader';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { Button, Card, formatINR } from '@retail-sarathi/ui';
 import { apiWithAuth } from '@/lib/helpers';
@@ -19,6 +20,7 @@ import {
   tableHeaderClassName,
 } from '../_components/dashboard-ui';
 import { ExportDropdown, fetchAndApplyExport } from '../_components/export-dropdown';
+import { RowActionsMenu } from '../_components/row-actions-menu';
 
 interface Supplier {
   id: string;
@@ -123,6 +125,7 @@ type BulkReminderResult = {
 };
 
 export default function SuppliersPage() {
+  const router = useRouter();
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [payables, setPayables] = useState<PayablesRow[]>([]);
   const [duesCalendar, setDuesCalendar] = useState<DuesCalendar | null>(null);
@@ -1031,15 +1034,13 @@ export default function SuppliersPage() {
                         </Button>
                       </div>
                     ) : (
-                      <div className="flex flex-wrap gap-2">
-                        <Link href={`/dashboard/suppliers/${s.id}`}>
-                          <Button type="button" variant="secondary">
-                            Ledger
-                          </Button>
-                        </Link>
-                        <Button type="button" variant="secondary" onClick={() => startEdit(s)}>
-                          Edit
-                        </Button>
+                      <div className="flex justify-end">
+                        <RowActionsMenu
+                          actions={[
+                            { key: 'ledger', label: 'Ledger', onClick: () => router.push(`/dashboard/suppliers/${s.id}`) },
+                            { key: 'edit', label: 'Edit', onClick: () => startEdit(s) },
+                          ]}
+                        />
                       </div>
                     )}
                   </td>

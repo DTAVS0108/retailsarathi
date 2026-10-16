@@ -1,11 +1,15 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button, Card } from '@retail-sarathi/ui';
 import { apiWithAuth } from '@/lib/helpers';
-import { pageShellClassName,
+import {
+  pageShellClassName,
+  EmptyState,
   MessageBanner,
   PageHeader,
+  StatCard,
+  cn,
   formatDateTime,
   inputClassName,
   parseError,
@@ -34,9 +38,15 @@ function unwrapInvoices(response: InvoiceListResponse): InvoiceOption[] {
   return [];
 }
 
+const ACTION_BADGE: Record<string, string> = {
+  EINVOICE_GENERATED: 'bg-emerald-100 text-emerald-800',
+  EWAY_BILL_GENERATED: 'bg-blue-100 text-blue-800',
+};
+
 export default function CompliancePage() {
   const [logs, setLogs] = useState<Array<Record<string, unknown>>>([]);
   const [invoices, setInvoices] = useState<InvoiceOption[]>([]);
+  const [loading, setLoading] = useState(true);
   const [gspStatus, setGspStatus] = useState<{
     configured?: boolean;
     mode?: string;
@@ -62,6 +72,7 @@ export default function CompliancePage() {
   useEffect(() => {
     void (async () => {
       try {
+        setLoading(true);
         const [audit, invoiceResponse, status] = await Promise.all([
           apiWithAuth<Array<Record<string, unknown>>>('/compliance/audit-log'),
           apiWithAuth<InvoiceListResponse>('/invoices'),
@@ -80,6 +91,8 @@ export default function CompliancePage() {
         if (status) setGspStatus(status);
       } catch (e) {
         setError(parseError(e));
+      } finally {
+        setLoading(false);
       }
     })();
   }, []);
@@ -105,6 +118,7 @@ export default function CompliancePage() {
       if (action === 'qr') {
         const result = await apiWithAuth<Record<string, unknown>>(`/compliance/invoices/${id}/qr`);
         setQrResult(result);
+        setEwayResult(null);
         setSuccess('Invoice QR generated — shown below.');
         return;
       }
@@ -126,6 +140,7 @@ export default function CompliancePage() {
         body: JSON.stringify({ distanceKm: 100 }),
       });
       setEwayResult(result);
+      setQrResult(null);
       setSuccess(result.note ?? `E-way bill ${result.ewayBillNo} saved.`);
       const audit = await apiWithAuth<Array<Record<string, unknown>>>('/compliance/audit-log');
       setLogs(audit);
@@ -136,6 +151,9 @@ export default function CompliancePage() {
     }
   }
 
+  const einvoiceCount = useMemo(() => logs.filter((l) => l.action === 'EINVOICE_GENERATED').length, [logs]);
+  const ewayCount = useMemo(() => logs.filter((l) => l.action === 'EWAY_BILL_GENERATED').length, [logs]);
+
   return (
     <div className={pageShellClassName}>
       <PageHeader
@@ -144,6 +162,12 @@ export default function CompliancePage() {
       />
       {error ? <MessageBanner tone="error">{error}</MessageBanner> : null}
       {success ? <MessageBanner tone="success">{success}</MessageBanner> : null}
+
+      <section className="grid gap-3 sm:gap-4 sm:grid-cols-3">
+        <StatCard label="Mode" value={gspStatus?.configured ? 'Live GSP' : 'Demo'} hint={gspStatus?.configured ? gspStatus.host : 'No GSP credentials set'} />
+        <StatCard label="E-invoices generated" value={String(einvoiceCount)} />
+        <StatCard label="E-way bills generated" value={String(ewayCount)} />
+      </section>
 
       <MessageBanner tone={gspStatus?.configured ? 'success' : 'info'}>
         {gspStatus?.configured ? (
@@ -157,79 +181,71 @@ export default function CompliancePage() {
             <code className="rounded bg-slate-100 px-1">EINVOICE_GSP_AUTH_TOKEN</code> and{' '}
             <code className="rounded bg-slate-100 px-1">EINVOICE_GSP_GSTIN</code> in the API{' '}
             <code className="rounded bg-slate-100 px-1">.env</code>, then restart the API. Live e-way bill remains
-            Coming soon.
+            coming soon.
           </>
         )}
       </MessageBanner>
 
-      <Card className="space-y-3 border-slate-200">
-        <h3 className="text-lg font-semibold">Invoice compliance tools</h3>
-        <p className="text-sm text-slate-600">
-          Pick a saved invoice below. QR / e-invoice / e-way bill need a real invoice ID — an empty field caused the
-          earlier <code className="rounded bg-slate-100 px-1">invoices//…</code> errors.
-        </p>
+      <Card className="border-slate-200">
+        <h3 className="mb-1 text-lg font-semibold text-slate-900">Invoice compliance tools</h3>
+        <p className="mb-4 text-sm text-slate-500">Pick a saved invoice, then generate its QR code, e-invoice IRN, or e-way bill.</p>
 
-        {invoices.length > 0 ? (
-          <label className="block space-y-1 text-sm font-medium text-slate-700">
-            <span>Invoice</span>
-            <select
-              className={selectClassName}
+        <div className="grid gap-4 md:grid-cols-2">
+          {invoices.length > 0 ? (
+            <label className="space-y-1 text-sm font-medium text-slate-700">
+              <span>Invoice</span>
+              <select
+                className={selectClassName}
+                value={invoiceId}
+                onChange={(e) => {
+                  setInvoiceId(e.target.value);
+                  setQrResult(null);
+                  setEwayResult(null);
+                  setError('');
+                  setSuccess('');
+                }}
+              >
+                {invoices.map((inv) => (
+                  <option key={inv.id} value={inv.id}>
+                    {inv.invoiceNumber}
+                    {inv.status ? ` · ${inv.status}` : ''}
+                    {inv.grandTotal != null ? ` · ₹${Number(inv.grandTotal).toLocaleString('en-IN')}` : ''}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <p className="text-sm text-amber-700">No invoices found yet. Create one from POS, then return here.</p>
+          )}
+
+          <label className="space-y-1 text-sm font-medium text-slate-700">
+            <span>Or paste invoice ID</span>
+            <input
+              className={inputClassName}
+              placeholder="Invoice UUID"
               value={invoiceId}
-              onChange={(e) => {
-                setInvoiceId(e.target.value);
-                setQrResult(null);
-                setError('');
-                setSuccess('');
-              }}
-            >
-              {invoices.map((inv) => (
-                <option key={inv.id} value={inv.id}>
-                  {inv.invoiceNumber}
-                  {inv.status ? ` · ${inv.status}` : ''}
-                  {inv.grandTotal != null ? ` · ₹${Number(inv.grandTotal).toLocaleString('en-IN')}` : ''}
-                </option>
-              ))}
-            </select>
+              onChange={(e) => setInvoiceId(e.target.value)}
+            />
           </label>
-        ) : (
-          <p className="text-sm text-amber-700">
-            No invoices found yet. Create one from POS, then return here.
-          </p>
-        )}
+        </div>
 
-        <label className="block space-y-1 text-sm font-medium text-slate-700">
-          <span>Or paste invoice ID</span>
-          <input
-            className={inputClassName}
-            placeholder="Invoice UUID"
-            value={invoiceId}
-            onChange={(e) => setInvoiceId(e.target.value)}
-          />
-        </label>
-
-        <div className="flex flex-wrap gap-2">
+        <div className="mt-4 flex flex-wrap gap-2">
           <Button type="button" variant="secondary" disabled={busy || !invoiceId.trim()} onClick={() => void runAction('qr')}>
             Generate QR
           </Button>
           <Button type="button" disabled={busy || !invoiceId.trim()} onClick={() => void runAction('einvoice')}>
             Request e-invoice
           </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            disabled={busy || !invoiceId.trim()}
-            onClick={() => void runAction('eway')}
-          >
+          <Button type="button" variant="secondary" disabled={busy || !invoiceId.trim()} onClick={() => void runAction('eway')}>
             Generate e-way bill (demo)
           </Button>
         </div>
 
         {ewayResult ? (
-          <div className="space-y-2 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-950">
+          <div className="mt-4 space-y-2 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-950">
             <p className="font-semibold">E-way bill saved on invoice</p>
             <p>
-              <span className="text-emerald-800">Number:</span>{' '}
-              <strong className="font-mono">{ewayResult.ewayBillNo}</strong>
+              <span className="text-emerald-800">Number:</span> <strong className="font-mono">{ewayResult.ewayBillNo}</strong>
             </p>
             <p>
               Invoice <strong>{ewayResult.invoiceNumber}</strong>
@@ -249,46 +265,57 @@ export default function CompliancePage() {
               </ul>
             ) : null}
             <p className="text-emerald-800">
-              Also shown on the invoice print under <strong>E-way bill no.</strong> — open Invoices → this bill →
-              Print.
+              Also shown on the invoice print under <strong>E-way bill no.</strong> — open Invoices → this bill → Print.
             </p>
           </div>
         ) : null}
 
         {qrResult ? (
-          <div className="rounded-xl border border-slate-200 p-4 text-sm">
-            <p className="break-all font-mono text-xs">{String(qrResult.qrPayload)}</p>
+          <div className="mt-4 flex flex-col gap-4 rounded-xl border border-slate-200 p-4 sm:flex-row sm:items-center">
             {qrResult.qrUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={String(qrResult.qrUrl)} alt="Invoice QR" className="mt-3 h-40 w-40" />
+              <img src={String(qrResult.qrUrl)} alt="Invoice QR" className="h-32 w-32 shrink-0 rounded-lg border border-slate-100" />
             ) : null}
+            <p className="min-w-0 break-all font-mono text-xs text-slate-600">{String(qrResult.qrPayload)}</p>
           </div>
         ) : null}
       </Card>
 
-      <Card className="overflow-x-auto border-slate-200">
-        <h3 className="mb-3 text-lg font-semibold">Audit log</h3>
-        <table className="min-w-full text-sm">
-          <thead>
-            <tr>
-              <th className={tableHeaderClassName}>When</th>
-              <th className={tableHeaderClassName}>Action</th>
-              <th className={tableHeaderClassName}>Entity</th>
-            </tr>
-          </thead>
-          <tbody>
-            {logs.map((l) => (
-              <tr key={String(l.id)}>
-                <td className={tableCellClassName}>{formatDateTime(String(l.createdAt))}</td>
-                <td className={tableCellClassName}>{String(l.action)}</td>
-                <td className={tableCellClassName}>
-                  {String(l.entityType)}
-                  {l.entityId ? ` · ${String(l.entityId).slice(0, 8)}` : ''}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <Card className="border-slate-200">
+        <h3 className="mb-4 text-lg font-semibold text-slate-900">Audit log</h3>
+        {loading ? (
+          <p className="py-8 text-center text-sm text-slate-500">Loading…</p>
+        ) : !logs.length ? (
+          <EmptyState title="No audit activity yet" description="E-invoice and e-way bill actions will be logged here." />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-slate-200">
+              <thead className="bg-slate-50">
+                <tr>
+                  <th className={tableHeaderClassName}>When</th>
+                  <th className={tableHeaderClassName}>Action</th>
+                  <th className={tableHeaderClassName}>Entity</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {logs.map((l) => (
+                  <tr key={String(l.id)}>
+                    <td className={tableCellClassName}>{formatDateTime(String(l.createdAt))}</td>
+                    <td className={tableCellClassName}>
+                      <span className={cn('inline-flex rounded-full px-2.5 py-1 text-xs font-medium', ACTION_BADGE[String(l.action)] ?? 'bg-slate-100 text-slate-600')}>
+                        {String(l.action).replace(/_/g, ' ')}
+                      </span>
+                    </td>
+                    <td className={tableCellClassName}>
+                      {String(l.entityType)}
+                      {l.entityId ? ` · ${String(l.entityId).slice(0, 8)}` : ''}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </Card>
     </div>
   );

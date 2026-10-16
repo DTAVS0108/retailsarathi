@@ -121,3 +121,4 @@ export {
 } from './credit-acknowledgement';
 export { BILLING_TEMPLATES, renderInvoiceHtml, invoicePreviewImage, type BillingTemplateMeta } from './invoice-templates';
 export type { PrintInvoiceData, InvoiceCopyKind } from './print';
+export { renderBarcodeSvg, generateBarcodeLabelsHtml, type BarcodeLabelItem, type BarcodeLabelOptions } from './barcode';

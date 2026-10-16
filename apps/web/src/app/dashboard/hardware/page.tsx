@@ -502,8 +502,10 @@ export default function HardwarePage() {
       {success ? <MessageBanner tone="success">{success}</MessageBanner> : null}
 
       <MessageBanner tone="info" autoHideMs={0} alsoToast={false}>
-        Web can preview and download ESC/POS. Bluetooth / USB write to a physical printer runs from the
-        RetailSarathi desktop or mobile app using the device settings saved here.
+        This page <strong>generates a print payload</strong> and lets you preview or download it — it does
+        not talk to a physical device directly from the browser. Send the payload to your printer via the
+        RetailSarathi desktop/mobile app (Bluetooth/USB write), or a raw-printer bridge like QZ Tray. Saving
+        a device here only records its settings — it does not confirm the device is reachable.
       </MessageBanner>
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -791,7 +793,7 @@ export default function HardwarePage() {
                           {device.name}
                         </h3>
                         <Badge color={device.isActive ? 'green' : 'gray'}>
-                          {device.isActive ? 'Active' : 'Paused'}
+                          {device.isActive ? 'Configured' : 'Paused'}
                         </Badge>
                       </div>
                       <p className="mt-1 text-sm text-slate-500">
@@ -801,9 +803,14 @@ export default function HardwarePage() {
                   </div>
 
                   {!isEditing ? (
-                    <p className="mt-3 text-sm text-slate-600">
-                      {summarizeSettings(device.settings, device.deviceType)}
-                    </p>
+                    <>
+                      <p className="mt-3 text-sm text-slate-600">
+                        {summarizeSettings(device.settings, device.deviceType)}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-400">
+                        Configured — not yet verified. Test with a real print/scan on the physical device.
+                      </p>
+                    </>
                   ) : (
                     <div className="mt-3 grid gap-3">
                       <label className="block space-y-1.5">

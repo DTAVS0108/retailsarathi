@@ -56,6 +56,10 @@ class _StockLine {
     this.serialNumbers = '',
     this.commitStock = true,
     this.catalogTracksSerial = false,
+    this.trackBatch = false,
+    this.batchNumber = '',
+    this.expiryDate = '',
+    this.catalogTracksBatch = false,
   });
 
   String name;
@@ -80,6 +84,11 @@ class _StockLine {
   bool commitStock;
   /// Product master tracks serials — user must opt in to enter them on stock-in.
   bool catalogTracksSerial;
+  bool trackBatch;
+  String batchNumber;
+  String expiryDate;
+  /// Product master tracks batches — user must opt in to enter batch info on stock-in.
+  bool catalogTracksBatch;
 }
 
 class _StockInScreenState extends State<StockInScreen> {
@@ -95,6 +104,9 @@ class _StockInScreenState extends State<StockInScreen> {
   final bankAccountCtrl = TextEditingController();
   final ifscCtrl = TextEditingController();
   final bankBranchCtrl = TextEditingController();
+  final customerNameCtrl = TextEditingController();
+  final customerGstinCtrl = TextEditingController();
+  final customerAddressCtrl = TextEditingController();
 
   final picker = ImagePicker();
   String? uploadId;
@@ -108,7 +120,9 @@ class _StockInScreenState extends State<StockInScreen> {
   bool ocrRunning = false;
   String? error;
   String? success;
-  int? expandedLine;
+  // Items are expanded by default (absence from this set = expanded); track only the ones a
+  // user has explicitly collapsed, so freshly parsed/added items always start open.
+  final Set<int> collapsedLines = {};
   int pageCount = 0;
   String? _supplierAddress;
   String? _supplierPhone;
@@ -124,8 +138,6 @@ class _StockInScreenState extends State<StockInScreen> {
   String? _vehicleNo;
   String? _placeOfSupply;
   String? _stateName;
-  String? _customerName;
-  String? _customerGstin;
   bool _appendToExistingBill = false;
   String? _duplicateInvoiceMsg;
   // ignore: unused_field — reserved when linking duplicate supplier bill UI
@@ -208,8 +220,9 @@ class _StockInScreenState extends State<StockInScreen> {
         'taxAmount': _taxAmount,
       },
       'customer': {
-        'name': _customerName,
-        'gstin': _customerGstin,
+        'name': customerNameCtrl.text.trim().isEmpty ? null : customerNameCtrl.text.trim(),
+        'gstin': customerGstinCtrl.text.trim().isEmpty ? null : customerGstinCtrl.text.trim(),
+        'address': customerAddressCtrl.text.trim().isEmpty ? null : customerAddressCtrl.text.trim(),
       },
       'items': lines
           .map(
@@ -282,8 +295,9 @@ class _StockInScreenState extends State<StockInScreen> {
       _sgstAmount = invoice['sgstAmount'] == null ? null : asDouble(invoice['sgstAmount']);
       _taxAmount = invoice['taxAmount'] == null ? null : asDouble(invoice['taxAmount']);
 
-      _customerName = customer['name']?.toString();
-      _customerGstin = customer['gstin']?.toString();
+      if (customer['name'] != null) customerNameCtrl.text = customer['name'].toString();
+      if (customer['gstin'] != null) customerGstinCtrl.text = customer['gstin'].toString().toUpperCase();
+      if (customer['address'] != null) customerAddressCtrl.text = customer['address'].toString();
 
       final next = <_StockLine>[];
       for (final raw in items.whereType<Map>()) {
@@ -308,6 +322,8 @@ class _StockInScreenState extends State<StockInScreen> {
             catalogTracksSerial: false,
             serialNumbers: '',
             commitStock: true,
+            trackBatch: false,
+            catalogTracksBatch: false,
           ),
         );
       }
@@ -317,7 +333,7 @@ class _StockInScreenState extends State<StockInScreen> {
         jsonError = null;
         if (next.isNotEmpty) {
           lines = next;
-          expandedLine = 0;
+          collapsedLines.clear();
         }
         error = null;
         success = 'JSON applied — review lines and confirm.';
@@ -411,6 +427,9 @@ class _StockInScreenState extends State<StockInScreen> {
     bankAccountCtrl.dispose();
     ifscCtrl.dispose();
     bankBranchCtrl.dispose();
+    customerNameCtrl.dispose();
+    customerGstinCtrl.dispose();
+    customerAddressCtrl.dispose();
     super.dispose();
   }
 
@@ -508,8 +527,9 @@ class _StockInScreenState extends State<StockInScreen> {
     bankBranchCtrl.text = preview['bankBranch']?.toString() ?? '';
     _placeOfSupply = preview['placeOfSupply']?.toString();
     _stateName = preview['stateName']?.toString();
-    _customerName = preview['customerName']?.toString();
-    _customerGstin = preview['customerGstin']?.toString();
+    customerNameCtrl.text = preview['customerName']?.toString() ?? '';
+    customerGstinCtrl.text = preview['customerGstin']?.toString() ?? '';
+    customerAddressCtrl.text = preview['customerAddress']?.toString() ?? '';
     final rawLines = preview['lines'];
     final next = <_StockLine>[];
     if (rawLines is List) {
@@ -543,6 +563,10 @@ class _StockInScreenState extends State<StockInScreen> {
             catalogTracksSerial: m['trackSerial'] == true || m['catalogTracksSerial'] == true,
             serialNumbers: resume ? serialText : '',
             commitStock: m['commitStock'] != false,
+            trackBatch: resume ? m['trackBatch'] == true : false,
+            catalogTracksBatch: m['trackBatch'] == true || m['catalogTracksBatch'] == true,
+            batchNumber: resume ? (m['batchNumber']?.toString() ?? '') : '',
+            expiryDate: resume ? (m['expiryDate']?.toString() ?? '') : '',
           ),
         );
       }
@@ -551,7 +575,7 @@ class _StockInScreenState extends State<StockInScreen> {
     setState(() {
       uploadId = id ?? preview['uploadId']?.toString() ?? uploadId;
       lines = next;
-      expandedLine = next.isEmpty ? null : 0;
+      collapsedLines.clear();
       error = null;
       jsonCtrl.text = _prettyJson(_buildEditableJson());
       final quality = preview['extractionQuality']?.toString();
@@ -790,6 +814,9 @@ class _StockInScreenState extends State<StockInScreen> {
         'trackSerial': l.trackSerial,
         if (serials.isNotEmpty) 'serialNumbers': serials,
         'commitStock': l.commitStock,
+        if (l.trackBatch) 'trackBatch': l.trackBatch,
+        if (l.trackBatch && l.batchNumber.trim().isNotEmpty) 'batchNumber': l.batchNumber.trim(),
+        if (l.trackBatch && l.expiryDate.trim().isNotEmpty) 'expiryDate': l.expiryDate.trim(),
       });
     }
     if (payloadLines.isEmpty) {
@@ -837,8 +864,10 @@ class _StockInScreenState extends State<StockInScreen> {
         if (bankBranchCtrl.text.trim().isNotEmpty) 'bankBranch': bankBranchCtrl.text.trim(),
         if (_placeOfSupply != null) 'placeOfSupply': _placeOfSupply,
         if (_stateName != null) 'stateName': _stateName,
-        if (_customerName != null) 'customerName': _customerName,
-        if (_customerGstin != null) 'customerGstin': _customerGstin,
+        if (customerNameCtrl.text.trim().isNotEmpty) 'customerName': customerNameCtrl.text.trim(),
+        if (customerGstinCtrl.text.trim().isNotEmpty) 'customerGstin': customerGstinCtrl.text.trim(),
+        if (customerAddressCtrl.text.trim().isNotEmpty)
+          'customerAddress': customerAddressCtrl.text.trim(),
         if (_appendToExistingBill) 'appendToExistingBill': true,
         'lines': payloadLines,
       });
@@ -852,7 +881,7 @@ class _StockInScreenState extends State<StockInScreen> {
             ? '$msg · Saved supplier ${supplier['name']}'
             : msg;
         lines = [];
-        expandedLine = null;
+        collapsedLines.clear();
         textCtrl.clear();
         jsonCtrl.clear();
         bankNameCtrl.clear();
@@ -926,6 +955,10 @@ class _StockInScreenState extends State<StockInScreen> {
                   'serialNumbers': l.serialNumbers,
                   'commitStock': l.commitStock,
                   'selected': l.selected,
+                  'trackBatch': l.trackBatch,
+                  'catalogTracksBatch': l.catalogTracksBatch,
+                  'batchNumber': l.batchNumber,
+                  'expiryDate': l.expiryDate,
                 },
               )
               .toList(),
@@ -1385,21 +1418,52 @@ Grand Total  42800.00''';
                     textInputAction: TextInputAction.done,
                     decoration: const InputDecoration(labelText: 'Branch'),
                   ),
+                  const SizedBox(height: AppSpace.md),
+                  _SectionHeader(
+                    title: 'Buyer (ship to)',
+                    subtitle: 'Who this invoice is addressed to',
+                  ),
+                  const SizedBox(height: AppSpace.sm),
+                  TextField(
+                    controller: customerNameCtrl,
+                    textInputAction: TextInputAction.next,
+                    decoration: const InputDecoration(labelText: 'Buyer name'),
+                  ),
+                  const SizedBox(height: AppSpace.sm),
+                  TextField(
+                    controller: customerAddressCtrl,
+                    textInputAction: TextInputAction.next,
+                    decoration: const InputDecoration(labelText: 'Buyer address'),
+                  ),
+                  const SizedBox(height: AppSpace.sm),
+                  TextField(
+                    controller: customerGstinCtrl,
+                    textCapitalization: TextCapitalization.characters,
+                    textInputAction: TextInputAction.done,
+                    decoration: const InputDecoration(labelText: 'Buyer GSTIN'),
+                    onChanged: (v) {
+                      final up = v.toUpperCase();
+                      if (up != v) {
+                        customerGstinCtrl.value = customerGstinCtrl.value.copyWith(
+                          text: up,
+                          selection: TextSelection.collapsed(offset: up.length),
+                        );
+                      }
+                    },
+                  ),
                   if (_supplierAddress != null ||
                       _totalAmount != null ||
-                      _ewayBillNo != null ||
-                      _customerName != null) ...[
+                      _ewayBillNo != null) ...[
                     const SizedBox(height: AppSpace.sm),
                     Text(
                       [
-                        if (_supplierAddress != null) 'Address: $_supplierAddress',
+                        if (_supplierAddress != null) 'Supplier address: $_supplierAddress',
                         if (_stateName != null) 'State: $_stateName',
                         if (_taxableValue != null) 'Taxable: $_taxableValue',
                         if (_taxAmount != null) 'Tax: $_taxAmount',
                         if (_totalAmount != null) 'Grand total: $_totalAmount',
                         if (_ewayBillNo != null) 'e-Way: $_ewayBillNo',
                         if (_vehicleNo != null) 'Vehicle: $_vehicleNo',
-                        if (_customerName != null) 'Buyer: $_customerName',
                       ].join('\n'),
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                             color: AppColors.muted,
@@ -1444,15 +1508,25 @@ Grand Total  42800.00''';
                   key: ValueKey('line-$i-${l.name}'),
                   index: i,
                   line: l,
-                  expanded: expandedLine == i,
-                  onToggle: () => setState(() => expandedLine = expandedLine == i ? null : i),
+                  expanded: !collapsedLines.contains(i),
+                  onToggle: () => setState(() {
+                    if (collapsedLines.contains(i)) {
+                      collapsedLines.remove(i);
+                    } else {
+                      collapsedLines.add(i);
+                    }
+                  }),
                   onChanged: () => setState(() {}),
                   onRemove: () => setState(() {
                     lines.removeAt(i);
-                    if (expandedLine == i) expandedLine = null;
-                    if (expandedLine != null && expandedLine! > i) {
-                      expandedLine = expandedLine! - 1;
+                    final shifted = <int>{};
+                    for (final c in collapsedLines) {
+                      if (c == i) continue;
+                      shifted.add(c > i ? c - 1 : c);
                     }
+                    collapsedLines
+                      ..clear()
+                      ..addAll(shifted);
                   }),
                 ),
               );
@@ -1558,6 +1632,8 @@ class _StockLineCardState extends State<_StockLineCard> {
   late final TextEditingController barcodeCtrl;
   late final TextEditingController serialsCtrl;
   late final TextEditingController nameCtrl;
+  late final TextEditingController batchNumberCtrl;
+  late final TextEditingController expiryDateCtrl;
 
   @override
   void initState() {
@@ -1569,6 +1645,8 @@ class _StockLineCardState extends State<_StockLineCard> {
     barcodeCtrl = TextEditingController(text: l.barcode ?? '');
     serialsCtrl = TextEditingController(text: l.serialNumbers);
     nameCtrl = TextEditingController(text: l.name);
+    batchNumberCtrl = TextEditingController(text: l.batchNumber);
+    expiryDateCtrl = TextEditingController(text: l.expiryDate);
   }
 
   @override
@@ -1579,6 +1657,8 @@ class _StockLineCardState extends State<_StockLineCard> {
     barcodeCtrl.dispose();
     serialsCtrl.dispose();
     nameCtrl.dispose();
+    batchNumberCtrl.dispose();
+    expiryDateCtrl.dispose();
     super.dispose();
   }
 
@@ -1676,6 +1756,7 @@ class _StockLineCardState extends State<_StockLineCard> {
                           children: [
                             _miniChip(_badgeLabel, _badgeColor),
                             if (l.trackSerial) _miniChip('Serials', AppColors.warn),
+                            if (l.trackBatch) _miniChip('Batch', AppColors.warn),
                             if (!l.commitStock) _miniChip('Hold stock', AppColors.amberDeep),
                             if ((l.barcode ?? '').isEmpty) _miniChip('No barcode', AppColors.warn),
                           ],
@@ -1791,6 +1872,47 @@ class _StockLineCardState extends State<_StockLineCard> {
                       ),
                       onChanged: (v) {
                         l.serialNumbers = v;
+                        widget.onChanged();
+                      },
+                    ),
+                    const SizedBox(height: AppSpace.sm),
+                  ],
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(
+                      'Track batch / expiry',
+                      style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w600, fontSize: 14),
+                    ),
+                    subtitle: Text(
+                      l.catalogTracksBatch
+                          ? 'Catalog uses batches — enter batch number now if known'
+                          : 'Off by default; stock is consumed earliest-expiry-first automatically',
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                    value: l.trackBatch,
+                    onChanged: (v) {
+                      l.trackBatch = v;
+                      widget.onChanged();
+                    },
+                  ),
+                  if (l.trackBatch) ...[
+                    TextField(
+                      controller: batchNumberCtrl,
+                      decoration: const InputDecoration(labelText: 'Batch number'),
+                      onChanged: (v) {
+                        l.batchNumber = v;
+                        widget.onChanged();
+                      },
+                    ),
+                    const SizedBox(height: AppSpace.sm),
+                    TextField(
+                      controller: expiryDateCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Expiry date (optional)',
+                        hintText: 'YYYY-MM-DD',
+                      ),
+                      onChanged: (v) {
+                        l.expiryDate = v;
                         widget.onChanged();
                       },
                     ),

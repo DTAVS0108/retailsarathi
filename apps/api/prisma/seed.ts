@@ -26,7 +26,11 @@ async function purgeDemoData(tenantId: string) {
   await prisma.purchaseOrder.deleteMany({ where: { tenantId } });
   await prisma.repairPartUsed.deleteMany({ where: { repairJob: { tenantId } } });
   await prisma.repairStatusHistory.deleteMany({ where: { repairJob: { tenantId } } });
+  await prisma.loanerCheckout.deleteMany({ where: { tenantId } });
+  await prisma.loanerDevice.deleteMany({ where: { tenantId } });
   await prisma.repairJob.deleteMany({ where: { tenantId } });
+  await prisma.device.deleteMany({ where: { tenantId } });
+  await prisma.repairServiceType.deleteMany({ where: { tenantId } });
   await prisma.tradeIn.deleteMany({ where: { tenantId } });
   await prisma.loyaltyTransaction.deleteMany({ where: { tenantId } });
   await prisma.stockTakeLine.deleteMany({ where: { stockTake: { tenantId } } });
@@ -90,6 +94,7 @@ async function main() {
     create: {
       id: 'demo-tenant',
       name: 'Demo Power Solutions',
+      slug: 'demo-power-solutions',
       gstin: '27AABCU9603R1ZM',
       stateCode: '27',
       phone: '9876543210',
@@ -125,7 +130,9 @@ async function main() {
 
   const accounts = [
     { code: '1000', name: 'Cash in Hand', type: 'ASSET' as const },
-    { code: '1100', name: 'Bank Account', type: 'ASSET' as const },
+    // Code 1100 is the Accounts Receivable leg the accounting service posts credit
+    // (udhaar) sales and collections against — must match, not a literal bank account.
+    { code: '1100', name: 'Accounts Receivable', type: 'ASSET' as const },
     { code: '1200', name: 'Inventory', type: 'ASSET' as const },
     { code: '2000', name: 'Accounts Payable', type: 'LIABILITY' as const },
     { code: '3000', name: 'Owner Equity', type: 'EQUITY' as const },
@@ -139,7 +146,7 @@ async function main() {
   for (const a of accounts) {
     await prisma.account.upsert({
       where: { tenantId_code: { tenantId: tenant.id, code: a.code } },
-      update: {},
+      update: { name: a.name, type: a.type },
       create: { tenantId: tenant.id, ...a },
     });
   }
@@ -1438,6 +1445,23 @@ async function main() {
       },
     },
   });
+
+  // Repair service catalog (common services for quick estimate prefill at intake)
+  const [screenReplacementIphone] = await Promise.all(
+    [
+      { name: 'Screen Replacement — iPhone', defaultPrice: 4200, typicalTurnaroundDays: 1 },
+      { name: 'Screen Replacement — Android', defaultPrice: 2500, typicalTurnaroundDays: 1 },
+      { name: 'Battery Replacement', defaultPrice: 800, typicalTurnaroundDays: 1 },
+      { name: 'Charging Port Repair', defaultPrice: 600, typicalTurnaroundDays: 1 },
+      { name: 'Water Damage Diagnosis & Repair', defaultPrice: 500, typicalTurnaroundDays: 3 },
+      { name: 'Inverter / Battery MOSFET Repair', defaultPrice: 1200, typicalTurnaroundDays: 2 },
+      { name: 'Software / OS Reinstall', defaultPrice: 300, typicalTurnaroundDays: 0 },
+      { name: 'Speaker / Mic Replacement', defaultPrice: 500, typicalTurnaroundDays: 1 },
+    ].map((svc) =>
+      prisma.repairServiceType.create({ data: { tenantId: tenant.id, ...svc } }),
+    ),
+  );
+  void screenReplacementIphone;
 
   // Repair jobs
   const repairReady = await prisma.repairJob.create({

@@ -140,10 +140,6 @@ interface SearchHit {
   hsnCode: string;
 }
 
-function isImageUpload(file: File) {
-  return file.type.startsWith('image/') || /\.(png|jpe?g|webp|gif|bmp|heic|heif)$/i.test(file.name);
-}
-
 function routePurchaseToStockIn(
   purchase: PurchasePreview,
   router: ReturnType<typeof useRouter>,
@@ -324,18 +320,15 @@ export default function ScanPage() {
       setError('');
       setSuccess('');
 
-      let clientText = '';
-      if (isImageUpload(file)) {
-        setOcrRunning(true);
-        clientText = await runInvoiceOcr(file);
-        setOcrRunning(false);
-        if (clientText.trim()) setOcrText(clientText);
-      }
-
+      // Images go straight to the server's own OCR (`extractText()` in scan.service.ts) —
+      // this upload already requires the server to be reachable, so there's no offline
+      // benefit to also running the browser's slower Tesseract.js pass first. Running both
+      // sequentially used to double the wait (2+ minutes) for no accuracy gain; the separate
+      // "Image OCR" button above still offers pure client-side OCR for the offline/paste-only
+      // case, which this upload path never needed.
       const form = new FormData();
       form.append('file', file);
       form.append('createCustomer', 'true');
-      if (clientText.trim()) form.append('extractedText', clientText);
 
       const response = await apiWithAuth<UploadParseResponse>('/scan/upload', {
         method: 'POST',
@@ -376,7 +369,6 @@ export default function ScanPage() {
       setError(parseError(err));
     } finally {
       setUploadingFile(false);
-      setOcrRunning(false);
       event.target.value = '';
     }
   }
@@ -561,7 +553,7 @@ export default function ScanPage() {
                 {uploadingFile ? 'Uploading…' : 'Upload invoice / file'}
                 <input
                   type="file"
-                  accept="image/*,.txt,.csv,.pdf"
+                  accept="image/*,.txt,.csv,.pdf,.xlsx,.xls,.docx"
                   className="hidden"
                   onChange={handleServerUpload}
                   disabled={uploadingFile}

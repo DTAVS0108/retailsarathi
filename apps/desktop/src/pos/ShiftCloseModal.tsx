@@ -82,12 +82,16 @@ export function ShiftCloseModal({
       >
         <div className="mb-3 flex items-center justify-between">
           <h3 className="font-bold" style={{ color: 'var(--rs-ink)' }}>
-            Close shift
+            Shift summary
           </h3>
           <button type="button" className="rs-btn-ghost text-sm" onClick={onClose}>
             Close
           </button>
         </div>
+        <p className="mb-2 text-xs" style={{ color: 'var(--rs-muted)' }}>
+          A printable cash/sales summary for the day — this doesn't lock billing or close a
+          shift on the server.
+        </p>
         {busy ? <p style={{ color: 'var(--rs-muted)' }}>Loading…</p> : null}
         {err ? <p className="text-sm text-red-600">{err}</p> : null}
         {data ? (

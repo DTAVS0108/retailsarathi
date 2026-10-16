@@ -1,10 +1,13 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
 contextBridge.exposeInMainWorld('retailSarathi', {
+  getMigrationStatus: () => ipcRenderer.invoke('migration:status'),
+  retryMigration: (token: string, apiUrl: string) => ipcRenderer.invoke('migration:retry', token, apiUrl),
   getProducts: () => ipcRenderer.invoke('db:products'),
   saveInvoice: (invoice: unknown) => ipcRenderer.invoke('db:save-invoice', invoice),
   getOutbox: () => ipcRenderer.invoke('db:outbox'),
   getOutboxCount: () => ipcRenderer.invoke('db:outbox-count') as Promise<number>,
+  getPendingQtyByProduct: () => ipcRenderer.invoke('db:pending-qty') as Promise<Record<string, number>>,
   sync: (token: string, apiUrl: string) => ipcRenderer.invoke('sync:run', token, apiUrl),
   getSetting: (key: string) => ipcRenderer.invoke('settings:get', key),
   setSetting: (key: string, value: string) => ipcRenderer.invoke('settings:set', key, value),
@@ -26,13 +29,15 @@ contextBridge.exposeInMainWorld('retailSarathi', {
     ipcRenderer.invoke('print:html', html) as Promise<{ ok: boolean; error?: string }>,
   openExternal: (url: string) => ipcRenderer.invoke('shell:open-external', url),
   hasCashierPins: () => ipcRenderer.invoke('auth:has-pins') as Promise<boolean>,
-  setCashierPin: (payload: { label?: string; pin: string; token: string }) =>
+  setCashierPin: (payload: { label?: string; pin: string; token: string; role?: string }) =>
     ipcRenderer.invoke('auth:set-pin', payload) as Promise<boolean>,
   verifyPin: (pin: string) =>
     ipcRenderer.invoke('auth:verify-pin', pin) as Promise<{
       ok: boolean;
       token?: string;
       label?: string;
+      role?: string | null;
+      lockedForMs?: number;
     }>,
   clearCashierPins: () => ipcRenderer.invoke('auth:clear-pins') as Promise<boolean>,
   checkForUpdates: () =>

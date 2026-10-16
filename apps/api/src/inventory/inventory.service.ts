@@ -731,7 +731,7 @@ export class InventoryService {
   async receivePurchaseOrder(
     tenantId: string,
     poId: string,
-    receipts: Array<{ lineId: string; quantity: number; serialNumbers?: string[] }>,
+    receipts: Array<{ lineId: string; quantity: number; serialNumbers?: string[]; batchNumber?: string; expiryDate?: string }>,
     opts: {
       createPurchaseBill?: boolean;
       invoiceNumber?: string;
@@ -805,6 +805,26 @@ export class InventoryService {
           },
         });
 
+        let batchId: string | undefined;
+        const batchNumber = receipt.batchNumber?.trim();
+        if (line.product?.trackBatch && batchNumber) {
+          const batch = await tx.productBatch.upsert({
+            where: { productId_batchNumber: { productId: line.productId, batchNumber } },
+            create: {
+              tenantId,
+              productId: line.productId,
+              batchNumber,
+              expiryDate: receipt.expiryDate ? new Date(receipt.expiryDate) : undefined,
+              quantity: qty,
+            },
+            update: {
+              quantity: { increment: qty },
+              ...(receipt.expiryDate ? { expiryDate: new Date(receipt.expiryDate) } : {}),
+            },
+          });
+          batchId = batch.id;
+        }
+
         await tx.stockLedger.create({
           data: {
             tenantId,
@@ -812,6 +832,7 @@ export class InventoryService {
             type: 'PURCHASE',
             quantity: qty,
             referenceId: po.id,
+            batchId,
             notes: `GRN for ${po.poNumber}`,
           },
         });
@@ -1807,9 +1828,34 @@ export class InventoryService {
             });
           }
         }
+
+        if (product.trackBatch) {
+          // Same approximation the serial-void above already makes (most-recently-touched units,
+          // not a precise trace back to this exact bill's receipt) — decrement the most recently
+          // updated batch(es) for this product, capped so no batch goes negative.
+          let toRemove = qty;
+          const batches = await tx.productBatch.findMany({
+            where: { tenantId, productId: line.productId, quantity: { gt: 0 } },
+            orderBy: { updatedAt: 'desc' },
+          });
+          for (const batch of batches) {
+            if (toRemove <= 0.0001) break;
+            const take = Math.min(toRemove, Number(batch.quantity));
+            await tx.productBatch.update({
+              where: { id: batch.id },
+              data: { quantity: { decrement: take } },
+            });
+            toRemove -= take;
+          }
+        }
       }
 
-      if (bill.supplierId && unpaid > 0) {
+      // DRAFT bills never incremented outstandingBalance in the first place
+      // (upsertPurchaseBillFromStockIn only adds it once a bill is POSTED, via
+      // create or post-draft) — voiding one must not decrement a balance it
+      // never contributed to. The earlier paidAmount>0 guard above means the
+      // only other reachable status here is POSTED.
+      if (bill.supplierId && unpaid > 0 && bill.status !== 'DRAFT') {
         const supplier = await tx.supplier.update({
           where: { id: bill.supplierId },
           data: { outstandingBalance: { decrement: unpaid } },
@@ -2166,6 +2212,11 @@ export class InventoryService {
 
         const payableDelta = this.round2(nextTotal - Number(bill.totalAmount));
         const paid = Number(bill.paidAmount);
+        // A DRAFT bill never added its totalAmount to outstandingBalance in the first
+        // place (see the create branch above, which only posts to AP when status is
+        // POSTED). If appending lines flips it to POSTED here, the WHOLE new total is
+        // owed for the first time — not just the delta from this append.
+        const wasDraft = bill.status === 'DRAFT';
         bill = await tx.purchaseBill.update({
           where: { id: bill.id },
           data: {
@@ -2192,21 +2243,24 @@ export class InventoryService {
           },
         });
 
-        if ((supplierId || bill.supplierId) && payableDelta > 0.009) {
+        const amountToAdd = wasDraft ? nextTotal : payableDelta;
+        if ((supplierId || bill.supplierId) && amountToAdd > 0.009) {
           const sid = (supplierId ?? bill.supplierId)!;
           const supplier = await tx.supplier.update({
             where: { id: sid },
-            data: { outstandingBalance: { increment: payableDelta } },
+            data: { outstandingBalance: { increment: amountToAdd } },
           });
           await tx.supplierLedgerEntry.create({
             data: {
               tenantId,
               supplierId: sid,
               type: 'BILL',
-              amount: payableDelta,
+              amount: amountToAdd,
               balanceAfter: Number(supplier.outstandingBalance),
               billId: bill.id,
-              notes: `Added lines to bill ${invoiceNumber}`,
+              notes: wasDraft
+                ? `Posted draft bill ${invoiceNumber} (appended lines)`
+                : `Added lines to bill ${invoiceNumber}`,
               entryDate: invoiceDate ?? new Date(),
             },
           });

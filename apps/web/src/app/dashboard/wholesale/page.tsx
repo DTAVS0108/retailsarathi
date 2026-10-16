@@ -18,6 +18,7 @@ import { pageShellClassName,
   tableHeaderClassName,
   toNumber,
 } from '../_components/dashboard-ui';
+import { RowActionsMenu } from '../_components/row-actions-menu';
 
 type PriceListType = 'RETAIL' | 'DEALER' | 'DISTRIBUTOR' | 'WHOLESALE';
 
@@ -760,21 +761,13 @@ export default function WholesalePage() {
                               </span>
                             </td>
                             <td className={cn(tableCellClassName, 'text-right')}>
-                              <div className="flex justify-end gap-3">
-                                <button
-                                  type="button"
-                                  className="text-sm font-medium text-brand hover:underline"
-                                  onClick={() => fillFromItem(item)}
-                                >
-                                  Edit
-                                </button>
-                                <button
-                                  type="button"
-                                  className="text-sm font-medium text-red-600 hover:underline"
-                                  onClick={() => void removeItem(item.id)}
-                                >
-                                  Remove
-                                </button>
+                              <div className="flex justify-end">
+                                <RowActionsMenu
+                                  actions={[
+                                    { key: 'edit', label: 'Edit', onClick: () => fillFromItem(item) },
+                                    { key: 'remove', label: 'Remove', tone: 'danger', onClick: () => void removeItem(item.id) },
+                                  ]}
+                                />
                               </div>
                             </td>
                           </tr>

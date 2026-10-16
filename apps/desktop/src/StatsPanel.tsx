@@ -1,4 +1,13 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import {
+  Bar,
+  BarChart as RBarChart,
+  Cell,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import { useToastMessage } from './toast';
 
 type Monthly = {
@@ -65,7 +74,22 @@ type SupplierAgingRow = {
   msmeOver45?: number;
 };
 
-const COLORS = ['#0f766e', '#d97706', '#2563eb', '#db2777', '#7c3aed', '#059669'];
+/**
+ * Validated categorical palette (dataviz skill default) — fixed slot order, not cycled
+ * arbitrarily: clears CVD-separation and normal-vision-floor checks on every adjacent pair.
+ * Some slots sit below 3:1 contrast on a light surface by design — the "relief" requirement
+ * (direct labels) is met everywhere this is used.
+ */
+const COLORS = [
+  '#2a78d6', // blue
+  '#eb6834', // orange
+  '#1baf7a', // aqua
+  '#eda100', // yellow
+  '#e87ba4', // magenta
+  '#008300', // green
+  '#4a3aa7', // violet
+  '#e34948', // red
+];
 
 function inr(n: number) {
   return new Intl.NumberFormat('en-IN', {
@@ -92,29 +116,103 @@ function thisMonthRange() {
   return { from: iso(from), to: iso(to), label: now.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' }) };
 }
 
+/**
+ * Recharts' default category-axis tick has no truncation — a label wider than the reserved
+ * axis width overflows past x=0 and gets clipped on the LEFT (cutting off the first letters),
+ * since right-aligned text grows leftward. A foreignObject with real CSS text-overflow:ellipsis
+ * is the only reliable single-line truncation for SVG text; the full label is still available
+ * via the native title tooltip on hover.
+ */
+function makeTruncatedYAxisTick(maxWidth: number) {
+  function YAxisTick({
+    x,
+    y,
+    payload,
+  }: {
+    x?: string | number;
+    y?: string | number;
+    payload?: { value?: unknown };
+  }) {
+    const w = maxWidth - 10;
+    const cx = Number(x) || 0;
+    const cy = Number(y) || 0;
+    const label = String(payload?.value ?? '');
+    return (
+      <foreignObject x={cx - w - 6} y={cy - 9} width={w} height={18}>
+        <div
+          title={label}
+          style={{
+            fontSize: 11,
+            fontWeight: 600,
+            color: 'var(--rs-ink)',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            textAlign: 'right',
+            lineHeight: '18px',
+          }}
+        >
+          {label}
+        </div>
+      </foreignObject>
+    );
+  }
+  return YAxisTick;
+}
+
+function ChartTooltip({
+  active,
+  payload,
+  format = inr,
+}: {
+  active?: boolean;
+  payload?: Array<{ payload: { label: string; value: number } }>;
+  format?: (n: number) => string;
+}) {
+  if (!active || !payload?.length) return null;
+  const point = payload[0]?.payload;
+  if (!point) return null;
+  return (
+    <div
+      className="rounded-lg border px-3 py-2 text-xs shadow-md"
+      style={{ background: 'var(--rs-surface)', borderColor: 'var(--rs-border)', color: 'var(--rs-ink)' }}
+    >
+      <p className="font-semibold">{point.label}</p>
+      <p style={{ color: 'var(--rs-muted)' }}>{format(point.value)}</p>
+    </div>
+  );
+}
+
 function BarChart({ data }: { data: Array<{ label: string; value: number }> }) {
-  const max = Math.max(1, ...data.map((d) => d.value));
   if (!data.length) {
     return <p className="py-8 text-center text-sm" style={{ color: 'var(--rs-muted)' }}>No data</p>;
   }
   return (
-    <div className="flex h-36 items-end gap-2">
-      {data.map((d) => (
-        <div key={d.label} className="flex min-w-0 flex-1 flex-col items-center justify-end gap-1">
-          <span className="truncate text-[10px]" style={{ color: 'var(--rs-muted)' }}>
-            {d.value > 0 ? abbr(d.value) : ''}
-          </span>
-          <div
-            className="w-full max-w-[32px] rounded-t-md"
-            style={{ height: Math.max(4, (d.value / max) * 110), background: 'var(--rs-accent)' }}
-            title={inr(d.value)}
-          />
-          <span className="w-full truncate text-center text-[10px]" style={{ color: 'var(--rs-muted)' }}>
-            {d.label}
-          </span>
-        </div>
-      ))}
-    </div>
+    <ResponsiveContainer width="100%" height={150}>
+      <RBarChart data={data} margin={{ top: 8, right: 8, left: 8, bottom: 4 }} barCategoryGap="24%">
+        <XAxis dataKey="label" tick={{ fontSize: 10, fill: 'var(--rs-muted)' }} axisLine={{ stroke: 'var(--rs-border)' }} tickLine={false} />
+        <YAxis hide domain={[0, (max: number) => max * 1.15]} />
+        <Tooltip cursor={{ fill: 'rgba(0,0,0,0.04)' }} content={<ChartTooltip />} />
+        <Bar
+          dataKey="value"
+          radius={[6, 6, 0, 0]}
+          maxBarSize={36}
+          label={{
+            position: 'top',
+            fontSize: 10,
+            fill: 'var(--rs-muted)',
+            formatter: (v: unknown) => {
+              const n = Number(v) || 0;
+              return n > 0 ? abbr(n) : '';
+            },
+          }}
+        >
+          {data.map((_, i) => (
+            <Cell key={i} fill={COLORS[i % COLORS.length]} />
+          ))}
+        </Bar>
+      </RBarChart>
+    </ResponsiveContainer>
   );
 }
 
@@ -125,34 +223,41 @@ function HBars({
   data: Array<{ label: string; value: number }>;
   format?: (n: number) => string;
 }) {
-  const max = Math.max(1, ...data.map((d) => d.value));
   if (!data.length) {
     return <p className="text-sm" style={{ color: 'var(--rs-muted)' }}>No data</p>;
   }
+  const height = Math.max(90, data.length * 40);
+  const yAxisWidth = 130;
   return (
-    <ul className="space-y-3">
-      {data.map((d, i) => (
-        <li key={d.label}>
-          <div className="mb-1 flex justify-between gap-2 text-xs">
-            <span className="truncate font-medium" style={{ color: 'var(--rs-ink)' }}>
-              {d.label}
-            </span>
-            <span className="shrink-0 tabular-nums" style={{ color: 'var(--rs-muted)' }}>
-              {format(d.value)}
-            </span>
-          </div>
-          <div className="h-2 overflow-hidden rounded-full" style={{ background: 'var(--rs-surface-2)' }}>
-            <div
-              className="h-full rounded-full"
-              style={{
-                width: `${Math.max(2, (d.value / max) * 100)}%`,
-                background: COLORS[i % COLORS.length],
-              }}
-            />
-          </div>
-        </li>
-      ))}
-    </ul>
+    <ResponsiveContainer width="100%" height={height}>
+      <RBarChart data={data} layout="vertical" margin={{ top: 4, right: 72, left: 4, bottom: 4 }} barCategoryGap="28%">
+        <XAxis type="number" hide domain={[0, (max: number) => max * 1.12]} />
+        <YAxis
+          type="category"
+          dataKey="label"
+          width={yAxisWidth}
+          tick={makeTruncatedYAxisTick(yAxisWidth)}
+          axisLine={false}
+          tickLine={false}
+        />
+        <Tooltip cursor={{ fill: 'rgba(0,0,0,0.04)' }} content={<ChartTooltip format={format} />} />
+        <Bar
+          dataKey="value"
+          radius={[0, 6, 6, 0]}
+          barSize={10}
+          label={{
+            position: 'right',
+            fontSize: 10,
+            fill: 'var(--rs-muted)',
+            formatter: (v: unknown) => format(Number(v) || 0),
+          }}
+        >
+          {data.map((_, i) => (
+            <Cell key={i} fill={COLORS[i % COLORS.length]} />
+          ))}
+        </Bar>
+      </RBarChart>
+    </ResponsiveContainer>
   );
 }
 

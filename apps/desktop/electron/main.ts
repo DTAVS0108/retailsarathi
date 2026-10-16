@@ -3,10 +3,14 @@ import path from 'path';
 import fs from 'fs';
 import {
   initDatabase,
+  checkMigration,
+  retryMigration,
+  type MigrationStatus,
   getLocalProducts,
   saveLocalInvoice,
   getOutbox,
   getOutboxCount,
+  getPendingQtyByProduct,
   getSetting,
   setSetting,
   getJsonSetting,
@@ -84,8 +88,15 @@ function createWindow() {
   }
 }
 
+let migrationStatus: MigrationStatus = { state: 'not_needed' };
+
 app.whenReady().then(() => {
-  initDatabase();
+  migrationStatus = checkMigration();
+  if (migrationStatus.state === 'not_needed') {
+    initDatabase();
+  } else if (migrationStatus.state === 'migrated') {
+    initDatabase({ skipSeedIfEmpty: migrationStatus.justSwapped });
+  }
   createWindow();
 });
 
@@ -93,10 +104,17 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
+ipcMain.handle('migration:status', () => migrationStatus);
+ipcMain.handle('migration:retry', async (_e, token: string, apiUrl: string) => {
+  migrationStatus = await retryMigration(token, apiUrl);
+  return migrationStatus;
+});
+
 ipcMain.handle('db:products', () => getLocalProducts());
 ipcMain.handle('db:save-invoice', (_e, invoice) => saveLocalInvoice(invoice));
 ipcMain.handle('db:outbox', () => getOutbox());
 ipcMain.handle('db:outbox-count', () => getOutboxCount());
+ipcMain.handle('db:pending-qty', () => getPendingQtyByProduct());
 ipcMain.handle('sync:run', (_e, token: string, apiUrl: string) => syncWithServer(token, apiUrl));
 ipcMain.handle('settings:get', (_e, key: string) => getSetting(key));
 ipcMain.handle('settings:set', (_e, key: string, value: string) => {
@@ -118,8 +136,8 @@ ipcMain.handle('app:set-title', (_e, title: string) => {
 ipcMain.handle('auth:has-pins', () => hasCashierPins());
 ipcMain.handle(
   'auth:set-pin',
-  (_e, payload: { label?: string; pin: string; token: string }) =>
-    setCashierPin(payload.label || 'Cashier', payload.pin, payload.token),
+  (_e, payload: { label?: string; pin: string; token: string; role?: string }) =>
+    setCashierPin(payload.label || 'Cashier', payload.pin, payload.token, payload.role),
 );
 ipcMain.handle('auth:verify-pin', (_e, pin: string) => verifyCashierPin(pin));
 ipcMain.handle('auth:clear-pins', () => clearCashierPins());

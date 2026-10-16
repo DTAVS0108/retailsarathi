@@ -56,6 +56,8 @@ export interface PrintInvoiceData {
   qrPayload?: string;
   qrUrl?: string;
   qrParsed?: InvoiceQrParsed;
+  /** Public, unauthenticated, permanent invoice view page — what a 'shop' QR encodes. */
+  publicViewUrl?: string;
   lines: Array<{
     name: string;
     hsnCode?: string;
@@ -180,7 +182,12 @@ export function combinePrintDocuments(documents: string[]): string {
   <meta charset="utf-8" />
   <title>${title}</title>
   <style>
-    @page { size: A4; margin: 14mm; }
+    /* 0 here, not a real page margin — see the matching comment in invoice-templates.ts's
+       printStyles(). A nonzero @page margin is the exact box Chrome draws its own print
+       header/footer (URL, date, page number) into. Each bundled document's own forced
+       page padding, merged in below from its extracted stylesheet, supplies the real
+       visual margin instead. */
+    @page { size: A4; margin: 0; }
     * { box-sizing: border-box; }
     body { margin: 0; background: #fff; }
     .print-sheet {

@@ -71,3 +71,9 @@ export class StockAdjustDto {
   @ApiProperty() @Type(() => Number) @IsNumber() quantity!: number;
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
 }
+
+export class UpsertBatchDto {
+  @ApiProperty() @IsString() batchNumber!: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() expiryDate?: string;
+  @ApiProperty() @Type(() => Number) @IsNumber() @Min(0) quantity!: number;
+}

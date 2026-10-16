@@ -43,6 +43,7 @@ module.exports = {
         'loader-pulse': 'loaderPulse 1.6s ease-in-out infinite',
         'loader-breathe': 'loaderBreathe 1.8s ease-in-out infinite',
         'fab-breathe': 'fabBreathe 2.4s ease-in-out infinite',
+        'pop-in': 'popIn 0.25s cubic-bezier(0.34, 1.56, 0.64, 1)',
       },
       keyframes: {
         heroFadeUp: {
@@ -92,6 +93,10 @@ module.exports = {
         fabBreathe: {
           '0%, 100%': { transform: 'scale(1)', boxShadow: '0 10px 25px -5px rgb(15 118 110 / 0.35)' },
           '50%': { transform: 'scale(1.06)', boxShadow: '0 16px 32px -6px rgb(15 118 110 / 0.45)' },
+        },
+        popIn: {
+          '0%': { opacity: '0', transform: 'scale(0.5)' },
+          '100%': { opacity: '1', transform: 'scale(1)' },
         },
       },
       transitionTimingFunction: {

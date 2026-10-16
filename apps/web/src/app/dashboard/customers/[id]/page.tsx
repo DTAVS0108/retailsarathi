@@ -77,6 +77,15 @@ interface RepairJob {
   receivedAt?: string;
 }
 
+interface CustomerDevice {
+  id: string;
+  brand?: string | null;
+  model: string;
+  imei?: string | null;
+  createdAt: string;
+  repairJobs: Array<{ id: string; jobNumber: string; status: string; receivedAt: string }>;
+}
+
 interface LoyaltyTxn {
   id: string;
   points: number;
@@ -154,6 +163,7 @@ export default function CustomerDetailPage() {
   const [ledger, setLedger] = useState<LedgerEntry[]>([]);
   const [payments, setPayments] = useState<CustomerPaymentRow[]>([]);
   const [repairs, setRepairs] = useState<RepairJob[]>([]);
+  const [devices, setDevices] = useState<CustomerDevice[]>([]);
   const [loyalty, setLoyalty] = useState<LoyaltyTxn[]>([]);
   const [aging, setAging] = useState<AgingRow | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -192,7 +202,7 @@ export default function CustomerDetailPage() {
   async function load() {
     try {
       setError('');
-      const [detail, stmt, agingReport, openInv] = await Promise.all([
+      const [detail, stmt, agingReport, openInv, deviceList] = await Promise.all([
         apiWithAuth<
           CustomerProfile & {
             invoices?: StatementInvoice[];
@@ -208,6 +218,7 @@ export default function CustomerDetailPage() {
         }>(`/customers/${customerId}/statement`),
         apiWithAuth<AgingRow[]>(`/customers/aging/report?customerId=${customerId}`),
         apiWithAuth<OpenInvoice[]>(`/customers/${customerId}/open-invoices`),
+        apiWithAuth<CustomerDevice[]>(`/customers/${customerId}/devices`),
       ]);
 
       const profile = stmt.customer ?? detail;
@@ -218,6 +229,7 @@ export default function CustomerDetailPage() {
       setPayments(stmt.payments ?? []);
       setOpenInvoices(openInv ?? []);
       setRepairs(detail.repairJobs ?? []);
+      setDevices(deviceList ?? []);
       setLoyalty(detail.loyaltyTransactions ?? []);
       setAging(agingReport[0] ?? null);
     } catch (e) {
@@ -458,7 +470,8 @@ export default function CustomerDetailPage() {
   }
 
   const phoneCall = callLink(customer.phone);
-  const canWhatsApp = customer.phone.replace(/\D/g, '').slice(-10).length === 10;
+  const canWhatsApp =
+    customer.phone.replace(/\D/g, '').slice(-10).length === 10 && Boolean(customer.whatsappOptIn);
 
   const tabs: Array<{ id: TabId; label: string }> = [
     { id: 'profile', label: 'Profile' },
@@ -1138,6 +1151,37 @@ export default function CustomerDetailPage() {
       ) : null}
 
       {tab === 'repairs' ? (
+        <>
+        {devices.length ? (
+          <Card className="border-slate-200">
+            <h2 className="mb-3 text-lg font-semibold">Devices on file</h2>
+            <ul className="space-y-3">
+              {devices.map((device) => (
+                <li key={device.id} className="rounded-xl border border-slate-200 px-3 py-3">
+                  <p className="font-medium text-slate-900">
+                    {device.brand ? `${device.brand} ` : ''}
+                    {device.model}
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    {device.imei ? `IMEI ${device.imei} · ` : ''}
+                    {device.repairJobs.length} repair{device.repairJobs.length === 1 ? '' : 's'} on record
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {device.repairJobs.map((job) => (
+                      <Link
+                        key={job.id}
+                        href={`/dashboard/repairs/${job.id}`}
+                        className="rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"
+                      >
+                        {job.jobNumber} · <StatusBadge status={job.status} />
+                      </Link>
+                    ))}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        ) : null}
         <Card className="border-slate-200">
           <h2 className="mb-3 text-lg font-semibold">Repair jobs</h2>
           {!repairs.length ? (
@@ -1164,6 +1208,7 @@ export default function CustomerDetailPage() {
             </ul>
           )}
         </Card>
+        </>
       ) : null}
 
       {/* Mobile sticky actions — above bottom nav */}

@@ -53,6 +53,9 @@ export class ConfirmStockInLineDto {
   @ApiPropertyOptional() @IsOptional() @IsBoolean() trackSerial?: boolean;
   @ApiPropertyOptional({ type: [String] }) @IsOptional() @IsArray() @IsString({ each: true })
   serialNumbers?: string[];
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() trackBatch?: boolean;
+  @ApiPropertyOptional() @IsOptional() @IsString() batchNumber?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() expiryDate?: string;
   /** If false, update/create product but do not increment stock (soft / pending). */
   @ApiPropertyOptional() @IsOptional() @IsBoolean() commitStock?: boolean;
 }

@@ -1,4 +1,12 @@
-import { getOutbox, markOutboxSynced, upsertProductsFromServer, getSetting, setSetting } from './database';
+import {
+  getOutbox,
+  markOutboxSynced,
+  markOutboxStatus,
+  getOutboxFailedCount,
+  upsertProductsFromServer,
+  getSetting,
+  setSetting,
+} from './database';
 import { randomUUID } from 'crypto';
 
 const DEVICE_ID_KEY = 'device-id';
@@ -59,12 +67,24 @@ export async function syncWithServer(token: string, apiUrl: string) {
       throw new Error(`Sync push failed (${pushRes.status}): ${errText.slice(0, 200)}`);
     }
 
-    const { results } = await pushRes.json();
-    for (let i = 0; i < results.length; i++) {
-      if (results[i].status === 'SYNCED') {
-        markOutboxSynced(outbox[i].id);
+    const { results } = (await pushRes.json()) as {
+      results: Array<{ entityId: string; status: string }>;
+    };
+    // Match by entityId (the server already returns it per result) — never assume the response
+    // array is in the same order as the request, which it isn't guaranteed to be.
+    const outboxByEntityId = new Map(outbox.map((o) => [o.entity_id, o]));
+    for (const result of results) {
+      const row = outboxByEntityId.get(result.entityId);
+      if (!row) continue;
+      if (result.status === 'SYNCED') {
+        markOutboxSynced(row.id);
         synced += 1;
+      } else if (result.status === 'CONFLICT') {
+        markOutboxStatus(row.id, 'CONFLICT');
+      } else if (result.status === 'FAILED') {
+        markOutboxStatus(row.id, 'FAILED');
       }
+      // Any other status (e.g. 'DUPLICATE') is left PENDING — it'll be retried next sync.
     }
   }
 
@@ -89,7 +109,7 @@ export async function syncWithServer(token: string, apiUrl: string) {
     /* optional */
   }
 
-  return { pushed: synced, pulled, catalogCount };
+  return { pushed: synced, pulled, catalogCount, failed: getOutboxFailedCount() };
 }
 
 function getDeviceId(): string {

@@ -4,6 +4,7 @@ import { AppLoader } from '@/app/_components/app-loader';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { Button, Card, formatINR } from '@retail-sarathi/ui';
+import { REPAIR_STATUS_FLOW } from '@retail-sarathi/types';
 import { apiWithAuth } from '@/lib/helpers';
 import { pageShellClassName,
   EmptyState,
@@ -42,6 +43,17 @@ interface RepairFormState {
   imei: string;
   issue: string;
   estimateAmount: string;
+  serviceTypeId: string;
+  powersOn: boolean;
+  screenDamage: boolean;
+  bodyDamage: boolean;
+  intakeNotes: string;
+}
+
+interface ServiceTypeOption {
+  id: string;
+  name: string;
+  defaultPrice?: number | null;
 }
 
 const EMPTY_FORM: RepairFormState = {
@@ -50,7 +62,25 @@ const EMPTY_FORM: RepairFormState = {
   imei: '',
   issue: '',
   estimateAmount: '',
+  serviceTypeId: '',
+  powersOn: true,
+  screenDamage: false,
+  bodyDamage: false,
+  intakeNotes: '',
 };
+
+/** Only send a checklist if the front desk actually recorded something beyond the default. */
+function buildIntakeChecklist(form: RepairFormState) {
+  if (form.powersOn && !form.screenDamage && !form.bodyDamage && !form.intakeNotes.trim()) {
+    return undefined;
+  }
+  return {
+    powersOn: form.powersOn,
+    screenDamage: form.screenDamage,
+    bodyDamage: form.bodyDamage,
+    notes: form.intakeNotes.trim() || undefined,
+  };
+}
 
 export default function RepairsPage() {
   const [jobs, setJobs] = useState<RepairJob[]>([]);
@@ -61,18 +91,29 @@ export default function RepairsPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [workload, setWorkload] = useState<{
+    technicians: Array<{ technicianId: string; name: string; openJobCount: number }>;
+    unassignedOpenJobs: number;
+  } | null>(null);
+  const [serviceTypes, setServiceTypes] = useState<ServiceTypeOption[]>([]);
+  const [tenantSlug, setTenantSlug] = useState('');
 
   async function loadRepairs(status = statusFilter) {
     try {
       setLoading(true);
       setError('');
-      const suffix = status ? `?status=${encodeURIComponent(status)}` : '';
-      const [jobsResponse, customersResponse] = await Promise.all([
-        apiWithAuth<RepairJob[]>(`/repairs${suffix}`),
+      const [jobsResponse, customersResponse, workloadResponse, serviceTypesResponse, tenantResponse] = await Promise.all([
+        apiWithAuth<RepairJob[]>(`/repairs${status ? `?status=${encodeURIComponent(status)}` : ''}`),
         apiWithAuth<CustomerOption[]>('/customers'),
+        apiWithAuth<typeof workload>('/repairs/technicians/workload').catch(() => null),
+        apiWithAuth<ServiceTypeOption[]>('/repair-service-types').catch(() => []),
+        apiWithAuth<{ slug: string | null }>('/tenants/profile').catch(() => null),
       ]);
       setJobs(jobsResponse);
       setCustomers(customersResponse);
+      setWorkload(workloadResponse);
+      setServiceTypes(serviceTypesResponse);
+      setTenantSlug(tenantResponse?.slug ?? '');
     } catch (err) {
       setError(parseError(err));
     } finally {
@@ -99,7 +140,9 @@ export default function RepairsPage() {
       setSaving(true);
       setError('');
       setSuccess('');
-      await apiWithAuth('/repairs', {
+      const created = await apiWithAuth<{
+        reopenSuggestion?: { jobId: string; jobNumber: string; warrantyEndsAt?: string | null } | null;
+      }>('/repairs', {
         method: 'POST',
         body: JSON.stringify({
           customerId: form.customerId,
@@ -107,10 +150,16 @@ export default function RepairsPage() {
           imei: form.imei.trim() || undefined,
           issue: form.issue.trim(),
           estimateAmount: form.estimateAmount ? toNumber(form.estimateAmount) : undefined,
+          serviceTypeId: form.serviceTypeId || undefined,
+          intakeChecklist: buildIntakeChecklist(form),
         }),
       });
       setForm(EMPTY_FORM);
-      setSuccess('Repair job created successfully.');
+      setSuccess(
+        created.reopenSuggestion
+          ? `Repair job created. Note: this device was serviced before (${created.reopenSuggestion.jobNumber}), still under warranty — consider handling this as a warranty comeback.`
+          : 'Repair job created successfully.',
+      );
       await loadRepairs();
     } catch (err) {
       setError(parseError(err));
@@ -145,6 +194,54 @@ export default function RepairsPage() {
           </p>
         </Card>
       </section>
+
+      {tenantSlug ? (
+        <Card className="border-slate-200">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-semibold text-slate-700">Counter "Now Serving" display</h3>
+              <p className="text-xs text-slate-500">
+                A public, no-login screen showing ready-for-pickup token numbers — open this link on a
+                tablet/TV at the counter.
+              </p>
+              <p className="mt-1 font-mono text-xs text-slate-400">
+                {typeof window !== 'undefined' ? window.location.origin : ''}/queue/{tenantSlug}
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                const url = `${window.location.origin}/queue/${tenantSlug}`;
+                void navigator.clipboard.writeText(url);
+                setSuccess('Queue display link copied to clipboard.');
+              }}
+            >
+              Copy display link
+            </Button>
+          </div>
+        </Card>
+      ) : null}
+
+      {workload?.technicians.length ? (
+        <Card className="border-slate-200">
+          <h3 className="text-sm font-semibold text-slate-700">Technician workload</h3>
+          <div className="mt-3 flex flex-wrap gap-3">
+            {workload.technicians.map((t) => (
+              <div key={t.technicianId} className="rounded-xl border border-slate-200 px-3 py-2 text-sm">
+                <p className="font-medium text-slate-900">{t.name}</p>
+                <p className="text-xs text-slate-500">{t.openJobCount} open job{t.openJobCount === 1 ? '' : 's'}</p>
+              </div>
+            ))}
+            {workload.unassignedOpenJobs > 0 ? (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm">
+                <p className="font-medium text-amber-800">{workload.unassignedOpenJobs} unassigned</p>
+              </div>
+            ) : null}
+          </div>
+        </Card>
+      ) : null}
 
       <Card className="border-teal-200 bg-gradient-to-br from-teal-50 to-white">
         <form className="space-y-5" onSubmit={handleCreate}>
@@ -189,6 +286,32 @@ export default function RepairsPage() {
                 onChange={(event) => setForm((current) => ({ ...current, imei: event.target.value }))}
               />
             </label>
+            {serviceTypes.length ? (
+              <label className="space-y-2 text-sm font-medium text-slate-700">
+                <span>Common service (optional)</span>
+                <select
+                  className={selectClassName}
+                  value={form.serviceTypeId}
+                  onChange={(event) => {
+                    const serviceTypeId = event.target.value;
+                    const picked = serviceTypes.find((s) => s.id === serviceTypeId);
+                    setForm((current) => ({
+                      ...current,
+                      serviceTypeId,
+                      estimateAmount:
+                        picked?.defaultPrice != null ? String(picked.defaultPrice) : current.estimateAmount,
+                    }));
+                  }}
+                >
+                  <option value="">Free-typed / bespoke</option>
+                  {serviceTypes.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
             <label className="space-y-2 text-sm font-medium text-slate-700 xl:col-span-2">
               <span>Estimate amount</span>
               <input
@@ -208,6 +331,58 @@ export default function RepairsPage() {
                 className={textareaClassName}
                 value={form.issue}
                 onChange={(event) => setForm((current) => ({ ...current, issue: event.target.value }))}
+              />
+            </label>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-white/60 p-4">
+            <p className="text-sm font-medium text-slate-700">
+              Condition at intake <span className="font-normal text-slate-400">(optional)</span>
+            </p>
+            <p className="mt-1 text-xs text-slate-500">
+              Record pre-existing condition before the device leaves the customer's hands.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-4">
+              <label className="flex items-center gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={form.powersOn}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, powersOn: event.target.checked }))
+                  }
+                />
+                Powers on
+              </label>
+              <label className="flex items-center gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={form.screenDamage}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, screenDamage: event.target.checked }))
+                  }
+                />
+                Existing screen damage
+              </label>
+              <label className="flex items-center gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={form.bodyDamage}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, bodyDamage: event.target.checked }))
+                  }
+                />
+                Existing body/case damage
+              </label>
+            </div>
+            <label className="mt-3 block space-y-2 text-sm font-medium text-slate-700">
+              <span>Other intake notes</span>
+              <input
+                className={inputClassName}
+                placeholder="e.g. missing back cover, SIM tray, case included"
+                value={form.intakeNotes}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, intakeNotes: event.target.value }))
+                }
               />
             </label>
           </div>
@@ -238,7 +413,7 @@ export default function RepairsPage() {
               onChange={(event) => setStatusFilter(event.target.value)}
             >
               <option value="">All statuses</option>
-              {['RECEIVED', 'DIAGNOSED', 'AWAITING_PARTS', 'IN_REPAIR', 'READY', 'DELIVERED', 'CANCELLED'].map((status) => (
+              {Object.keys(REPAIR_STATUS_FLOW).map((status) => (
                 <option key={status} value={status}>
                   {status.replace(/_/g, ' ')}
                 </option>

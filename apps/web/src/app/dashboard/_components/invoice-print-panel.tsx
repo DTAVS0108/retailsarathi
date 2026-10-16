@@ -1,18 +1,22 @@
 'use client';
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Button, formatINR } from '@retail-sarathi/ui';
 import { apiWithAuth } from '@/lib/helpers';
 import {
   buildInvoicePrintHtml,
   getCreditSummary,
-  INVOICE_COPY_OPTIONS,
   openPrintWindow,
   type InvoiceCopyKind,
   type InvoicePrintSource,
 } from '@/lib/invoice-print';
 import type { PrintInvoiceData } from '@retail-sarathi/ui';
 import { cn, parseError } from './dashboard-ui';
+import { NavIcon } from './nav-icons';
+import type { RowAction } from './row-actions-menu';
+import { InvoicePreviewModal } from './invoice-preview-modal';
+import { downloadBlob } from './export-dropdown';
 
 type Variant = 'panel' | 'toolbar' | 'compact';
 
@@ -26,9 +30,15 @@ interface InvoicePrintPanelProps {
   onError?: (message: string) => void;
   /** Highlight panel when landing from POS */
   autoFocus?: boolean;
+  /** compact variant only — non-print items (e.g. "Open bill") prepended to the menu, so a
+      row's whole action set (Open + print/share) lives in one kebab instead of two controls. */
+  extraActions?: RowAction[];
+  /** Tenant's configured copy count (1=Original, 2=+Duplicate, 3=+Triplicate) for "Download
+      invoice". Ignored for credit notes, which are always a single copy. Defaults to 1. */
+  invoiceCopyCount?: number;
 }
 
-type BusyKey = InvoiceCopyKind | 'ack' | 'thermal' | 'whatsapp' | null;
+type BusyKey = InvoiceCopyKind | 'ack' | 'thermal' | 'whatsapp' | 'download' | null;
 
 function openThermalPreview(text: string, invoiceNumber: string): string | null {
   const escaped = text
@@ -58,14 +68,20 @@ export function InvoicePrintPanel({
   className,
   onError,
   autoFocus = false,
+  extraActions = [],
+  invoiceCopyCount = 1,
 }: InvoicePrintPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuPanelRef = useRef<HTMLDivElement>(null);
   const menuId = useId();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number; openUpward: boolean } | null>(null);
   const [busy, setBusy] = useState<BusyKey>(null);
   const [printData, setPrintData] = useState<PrintInvoiceData | null>(printDataProp ?? null);
   const [waHint, setWaHint] = useState('');
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const isCreditNote = invoice?.documentType === 'CREDIT_NOTE';
 
   useEffect(() => {
     if (printDataProp) setPrintData(printDataProp);
@@ -78,15 +94,44 @@ export function InvoicePrintPanel({
 
   useEffect(() => {
     if (!menuOpen) return;
+    // Compact menu rows are ~2 lines tall (label + hint) — a taller estimate than a flat
+    // single-line menu, purely for deciding whether to flip the panel upward near the fold.
+    const place = () => {
+      const trigger = triggerRef.current;
+      if (!trigger) return;
+      const rect = trigger.getBoundingClientRect();
+      const estimatedHeight = 260;
+      const roomBelow = window.innerHeight - rect.bottom;
+      const openUpward = roomBelow < estimatedHeight && rect.top > estimatedHeight;
+      setMenuPos({
+        top: openUpward ? rect.top - 6 : rect.bottom + 6,
+        left: rect.right,
+        openUpward,
+      });
+    };
+    place();
+    const close = () => setMenuOpen(false);
     const onPointer = (event: MouseEvent) => {
-      if (!menuRef.current?.contains(event.target as Node)) setMenuOpen(false);
+      const target = event.target as Node;
+      if (triggerRef.current?.contains(target)) return;
+      if (menuPanelRef.current?.contains(target)) return;
+      close();
     };
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setMenuOpen(false);
+      if (event.key === 'Escape') close();
     };
     document.addEventListener('mousedown', onPointer);
     document.addEventListener('keydown', onKey);
+    // Close on a real user scroll gesture, not the raw 'scroll' event — see the equivalent
+    // comment in row-actions-menu.tsx for why (this app's global smooth-scroll behavior makes
+    // 'scroll' fire well after the click that opened the menu, closing it immediately).
+    document.addEventListener('wheel', close, { passive: true });
+    document.addEventListener('touchmove', close, { passive: true });
+    window.addEventListener('resize', close);
     return () => {
+      document.removeEventListener('wheel', close);
+      document.removeEventListener('touchmove', close);
+      window.removeEventListener('resize', close);
       document.removeEventListener('mousedown', onPointer);
       document.removeEventListener('keydown', onKey);
     };
@@ -135,6 +180,26 @@ export function InvoicePrintPanel({
     [invoice, invoiceId, onError],
   );
 
+  /** True one-click file download — the backend bundles the tenant's configured copy count
+      (1-3, always 1 for a credit note) into a single real PDF rendered server-side via a headless
+      browser, and returns it as base64 (same {filename, base64} shape this app's CSV/XLSX export
+      already uses), so this stays on the normal apiWithAuth JSON path with no special-casing. */
+  const runDownload = useCallback(async () => {
+    setBusy('download');
+    setMenuOpen(false);
+    try {
+      const res = await apiWithAuth<{ filename: string; base64: string }>(`/invoices/${invoiceId}/download`);
+      const binary = atob(res.base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      downloadBlob(res.filename, new Blob([bytes], { type: 'application/pdf' }));
+    } catch (err) {
+      onError?.(parseError(err));
+    } finally {
+      setBusy(null);
+    }
+  }, [invoiceId, onError]);
+
   const runThermal = useCallback(async () => {
     if (!invoice) {
       onError?.('Invoice details not loaded yet.');
@@ -182,110 +247,206 @@ export function InvoicePrintPanel({
     }
   }, [invoiceId, onError]);
 
-  /** Header / list: Original · Duplicate · Triplicate (+ acknowledgement if udhaar). */
+  /** Header / list: Preview + one Download action (+ acknowledgement if udhaar). */
   if (variant === 'toolbar') {
     return (
       <div className={cn('flex flex-wrap gap-2', className)}>
-        {INVOICE_COPY_OPTIONS.map((option) => (
-          <Button
-            key={option.copy}
-            type="button"
-            size="sm"
-            variant="secondary"
-            disabled={!canPrint || Boolean(busy)}
-            onClick={() => void runPrint(option.copy)}
-            title={option.hint}
-          >
-            {busy === option.copy ? '…' : option.shortLabel}
-          </Button>
-        ))}
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          disabled={!canPrint || Boolean(busy)}
+          onClick={() => setPreviewOpen(true)}
+        >
+          Preview
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          disabled={!canPrint || Boolean(busy)}
+          onClick={() => void runPrint('original')}
+        >
+          {busy === 'original' ? '…' : 'Print'}
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          disabled={!canPrint || Boolean(busy)}
+          onClick={() => void runDownload()}
+        >
+          {busy === 'download' ? '…' : isCreditNote ? 'Download credit note' : 'Download invoice'}
+        </Button>
         {creditSummary ? (
           <Button
             type="button"
             size="sm"
+            variant="secondary"
             disabled={!canPrint || Boolean(busy)}
             onClick={() => void runPrint('original', true)}
           >
             {busy === 'ack' ? '…' : 'Acknowledgement'}
           </Button>
         ) : null}
+        <InvoicePreviewModal
+          open={previewOpen}
+          invoiceId={invoiceId}
+          invoiceNumber={invoice?.invoiceNumber}
+          onClose={() => setPreviewOpen(false)}
+        />
       </div>
     );
   }
 
   if (variant === 'compact') {
+    const visibleExtraActions = extraActions.filter((a) => !a.hidden);
     return (
-      <div ref={menuRef} className={cn('relative inline-block', className)}>
-        <Button
+      <div className={cn('inline-block', className)}>
+        <button
+          ref={triggerRef}
           type="button"
-          size="sm"
-          variant="secondary"
-          disabled={!canPrint || Boolean(busy)}
+          disabled={Boolean(busy)}
+          aria-haspopup="menu"
           aria-expanded={menuOpen}
           aria-controls={menuId}
+          aria-label="Row actions"
           onClick={() => setMenuOpen((open) => !open)}
+          className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-50 disabled:opacity-50"
         >
-          {busy ? 'Printing…' : 'Print ▾'}
-        </Button>
-        {menuOpen ? (
-          <div
-            id={menuId}
-            className="absolute right-0 z-30 mt-2 w-72 rounded-xl border border-slate-200 bg-white p-2 shadow-xl"
-          >
-            <p className="px-2 py-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Tax invoice
-            </p>
-            {INVOICE_COPY_OPTIONS.map((option) => (
-              <button
-                key={option.copy}
-                type="button"
-                className="flex w-full flex-col rounded-lg px-3 py-2 text-left hover:bg-slate-50"
-                onClick={() => void runPrint(option.copy)}
+          <NavIcon name="kebab" className="h-4 w-4" />
+        </button>
+        {menuOpen && menuPos
+          ? createPortal(
+              <div
+                ref={menuPanelRef}
+                id={menuId}
+                role="menu"
+                style={{
+                  position: 'fixed',
+                  top: menuPos.openUpward ? undefined : menuPos.top,
+                  bottom: menuPos.openUpward ? window.innerHeight - menuPos.top : undefined,
+                  left: menuPos.left,
+                  transform: 'translateX(-100%)',
+                }}
+                className="z-[100] w-72 rounded-xl border border-slate-200 bg-white p-2 shadow-xl"
               >
-                <span className="text-sm font-medium text-slate-900">{option.label}</span>
-                <span className="text-xs text-slate-500">{option.hint}</span>
-              </button>
-            ))}
-            {creditSummary ? (
-              <>
-                <div className="my-1 border-t border-slate-100" />
+                {visibleExtraActions.length ? (
+                  <>
+                    {visibleExtraActions.map((a) => (
+                      <button
+                        key={a.key}
+                        type="button"
+                        role="menuitem"
+                        disabled={a.disabled}
+                        onClick={() => {
+                          setMenuOpen(false);
+                          a.onClick();
+                        }}
+                        className={cn(
+                          'flex w-full items-center rounded-lg px-3 py-2 text-left text-sm transition disabled:cursor-not-allowed disabled:opacity-50',
+                          a.tone === 'danger' ? 'text-rose-700 hover:bg-rose-50' : 'text-slate-800 hover:bg-slate-50',
+                        )}
+                      >
+                        {a.label}
+                      </button>
+                    ))}
+                    <div className="my-1 border-t border-slate-100" />
+                  </>
+                ) : null}
+                <p className="px-2 py-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  {isCreditNote ? 'Credit note' : 'Tax invoice'}
+                </p>
                 <button
                   type="button"
-                  className="flex w-full flex-col rounded-lg px-3 py-2 text-left hover:bg-amber-50"
-                  onClick={() => void runPrint('original', true)}
+                  role="menuitem"
+                  disabled={!canPrint || Boolean(busy)}
+                  className="flex w-full flex-col rounded-lg px-3 py-2 text-left hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setPreviewOpen(true);
+                  }}
                 >
-                  <span className="text-sm font-medium text-slate-900">Acknowledgement only</span>
-                  <span className="text-xs text-slate-500">Original + customer copy</span>
+                  <span className="text-sm font-medium text-slate-900">Preview</span>
+                  <span className="text-xs text-slate-500">See the layout before printing</span>
                 </button>
-              </>
-            ) : null}
-            {showThermal || showWhatsApp ? (
-              <>
-                <div className="my-1 border-t border-slate-100" />
-                {showThermal ? (
-                  <button
-                    type="button"
-                    className="flex w-full flex-col rounded-lg px-3 py-2 text-left hover:bg-slate-50"
-                    onClick={() => void runThermal()}
-                  >
-                    <span className="text-sm font-medium text-slate-900">Thermal receipt</span>
-                    <span className="text-xs text-slate-500">58mm counter slip</span>
-                  </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={!canPrint || Boolean(busy)}
+                  className="flex w-full flex-col rounded-lg px-3 py-2 text-left hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  onClick={() => void runPrint('original')}
+                >
+                  <span className="text-sm font-medium text-slate-900">{busy === 'original' ? 'Opening…' : 'Print'}</span>
+                  <span className="text-xs text-slate-500">Opens the browser print dialog</span>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={!canPrint || Boolean(busy)}
+                  className="flex w-full flex-col rounded-lg px-3 py-2 text-left hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  onClick={() => void runDownload()}
+                >
+                  <span className="text-sm font-medium text-slate-900">
+                    {busy === 'download' ? 'Preparing…' : isCreditNote ? 'Download credit note' : 'Download invoice'}
+                  </span>
+                  <span className="text-xs text-slate-500">
+                    {isCreditNote ? 'Single copy' : `${Math.min(3, Math.max(1, invoiceCopyCount))} ${Math.min(3, Math.max(1, invoiceCopyCount)) === 1 ? 'copy' : 'copies'} — set in Settings`}
+                  </span>
+                </button>
+                {creditSummary ? (
+                  <>
+                    <div className="my-1 border-t border-slate-100" />
+                    <button
+                      type="button"
+                      role="menuitem"
+                      disabled={!canPrint || Boolean(busy)}
+                      className="flex w-full flex-col rounded-lg px-3 py-2 text-left hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      onClick={() => void runPrint('original', true)}
+                    >
+                      <span className="text-sm font-medium text-slate-900">Acknowledgement only</span>
+                      <span className="text-xs text-slate-500">Original + customer copy</span>
+                    </button>
+                  </>
                 ) : null}
-                {showWhatsApp ? (
-                  <button
-                    type="button"
-                    className="flex w-full flex-col rounded-lg px-3 py-2 text-left hover:bg-slate-50"
-                    onClick={() => void runWhatsApp()}
-                  >
-                    <span className="text-sm font-medium text-slate-900">WhatsApp bill</span>
-                    <span className="text-xs text-slate-500">Share to customer phone</span>
-                  </button>
+                {showThermal || showWhatsApp ? (
+                  <>
+                    <div className="my-1 border-t border-slate-100" />
+                    {showThermal ? (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        disabled={!canPrint || Boolean(busy)}
+                        className="flex w-full flex-col rounded-lg px-3 py-2 text-left hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        onClick={() => void runThermal()}
+                      >
+                        <span className="text-sm font-medium text-slate-900">Thermal receipt</span>
+                        <span className="text-xs text-slate-500">58mm counter slip</span>
+                      </button>
+                    ) : null}
+                    {showWhatsApp ? (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        disabled={!canPrint || Boolean(busy)}
+                        className="flex w-full flex-col rounded-lg px-3 py-2 text-left hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        onClick={() => void runWhatsApp()}
+                      >
+                        <span className="text-sm font-medium text-slate-900">WhatsApp bill</span>
+                        <span className="text-xs text-slate-500">Share to customer phone</span>
+                      </button>
+                    ) : null}
+                  </>
                 ) : null}
-              </>
-            ) : null}
-          </div>
-        ) : null}
+              </div>,
+              document.body,
+            )
+          : null}
+        <InvoicePreviewModal
+          open={previewOpen}
+          invoiceId={invoiceId}
+          invoiceNumber={invoice?.invoiceNumber}
+          onClose={() => setPreviewOpen(false)}
+        />
       </div>
     );
   }

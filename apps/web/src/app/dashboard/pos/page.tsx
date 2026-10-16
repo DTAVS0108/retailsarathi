@@ -4,7 +4,8 @@ import { AppLoader } from '@/app/_components/app-loader';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button, Card, formatINR } from '@retail-sarathi/ui';
-import { calculateInvoice } from '@retail-sarathi/gst-engine';
+import { calculateInvoice, buildUpiPaymentUri, upiQrImageUrl } from '@retail-sarathi/gst-engine';
+import { useShopBranding } from '@/lib/shop-branding';
 import { apiWithAuth } from '@/lib/helpers';
 import {
   assertGstinOptional,
@@ -140,6 +141,8 @@ export default function PosPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [sellerState, setSellerState] = useState('27');
+  const [upiId, setUpiId] = useState('');
+  const { shopName } = useShopBranding();
   const [cart, setCart] = useState<CartLine[]>([]);
   const [barcodeInput, setBarcodeInput] = useState('');
   const [productPickerOpen, setProductPickerOpen] = useState(false);
@@ -236,11 +239,12 @@ export default function PosPage() {
     void (async () => {
       try {
         const [profile, prodRes, custRes] = await Promise.all([
-          apiWithAuth<{ stateCode: string }>('/tenants/profile'),
+          apiWithAuth<{ stateCode: string; upiId?: string | null }>('/tenants/profile'),
           apiWithAuth<{ items: Product[] }>('/products?pageSize=500'),
           apiWithAuth<Customer[]>('/customers'),
         ]);
         setSellerState(profile.stateCode);
+        setUpiId(profile.upiId ?? '');
         setProducts(prodRes.items);
         setCustomers(custRes);
         await loadHeldBills();
@@ -677,15 +681,25 @@ export default function PosPage() {
     e.preventDefault();
     const code = barcodeInput.trim();
     if (!code) return;
-    const p =
-      products.find((x) => x.barcode === code) ||
-      products.find((x) => x.sku.toLowerCase() === code.toLowerCase());
-    if (!p) {
-      setError(`No product found for "${code}"`);
-      return;
-    }
-    void addProduct(p);
     setBarcodeInput('');
+    void (async () => {
+      const local =
+        products.find((x) => x.barcode === code) ||
+        products.find((x) => x.sku.toLowerCase() === code.toLowerCase());
+      if (local) {
+        void addProduct(local);
+        return;
+      }
+      // Local cache is capped (pageSize=500) — fall back to a live lookup so
+      // shops with larger catalogs don't get false "not found" on a real scan.
+      try {
+        const fetched = await apiWithAuth<Product>(`/products/barcode/${encodeURIComponent(code)}`);
+        setProducts((prev) => (prev.some((x) => x.id === fetched.id) ? prev : [...prev, fetched]));
+        void addProduct(fetched);
+      } catch {
+        setError(`No product found for "${code}"`);
+      }
+    })();
   }
 
   function updateQty(key: string, delta: number) {
@@ -1942,6 +1956,32 @@ export default function PosPage() {
                       }
                     />
                   ) : null}
+                  {p.method === 'UPI' && upiId && Number(p.amount) > 0 ? (
+                    <div className="mt-3 flex flex-col items-center gap-1 rounded-xl border border-teal-200 bg-teal-50 p-3">
+                      <img
+                        src={upiQrImageUrl(
+                          buildUpiPaymentUri({
+                            vpa: upiId,
+                            payeeName: shopName || 'RetailSarathi',
+                            amount: Number(p.amount),
+                            note: `Bill ${new Date().toISOString().slice(0, 10)}`,
+                          }),
+                          180,
+                        )}
+                        alt="Scan to pay with UPI"
+                        width={140}
+                        height={140}
+                        className="h-[140px] w-[140px]"
+                      />
+                      <span className="text-xs font-semibold text-teal-900">
+                        Scan to pay {formatINR(Number(p.amount))}
+                      </span>
+                    </div>
+                  ) : p.method === 'UPI' && !upiId ? (
+                    <p className="mt-2 text-xs text-amber-700">
+                      Add your shop&apos;s UPI ID in Settings to show a scan-to-pay QR here.
+                    </p>
+                  ) : null}
                 </div>
               ))}
             </div>
@@ -2114,6 +2154,8 @@ export default function PosPage() {
         onSelect={(p) => {
           void addProduct(p as Product);
         }}
+        onDecrement={(p) => updateQty(p.id, -1)}
+        onRemove={(p) => setCart((prev) => prev.filter((x) => x.productId !== p.id))}
       />
 
       {serialPicker ? (

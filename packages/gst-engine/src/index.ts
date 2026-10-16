@@ -205,7 +205,12 @@ export function buildGstr1Payload(
   }>,
 ) {
   const b2b: unknown[] = [];
-  const b2cs: unknown[] = [];
+  // GSTR-1 b2cs is a monthly aggregate by (place of supply, rate, supply type) —
+  // not one row per invoice — so accumulate across every B2C invoice's lines here.
+  const b2csAgg = new Map<
+    string,
+    { sply_ty: 'INTER' | 'INTRA'; rt: number; pos: string; txval: number; iamt: number; camt: number; samt: number }
+  >();
 
   for (const inv of invoices) {
     const items = inv.lines.map((l) => ({
@@ -233,18 +238,30 @@ export function buildGstr1Payload(
         ],
       });
     } else {
-      b2cs.push({
-        sply_ty: 'INTRA',
-        rt: inv.lines[0]?.gstRate ?? 18,
-        typ: 'OE',
-        pos: inv.placeOfSupply,
-        txval: inv.lines.reduce((s, l) => s + l.taxableAmount, 0),
-        iamt: inv.lines.reduce((s, l) => s + l.igst, 0),
-        camt: inv.lines.reduce((s, l) => s + l.cgst, 0),
-        samt: inv.lines.reduce((s, l) => s + l.sgst, 0),
-      });
+      // A single invoice always has one supply type (seller/buyer state pair is fixed),
+      // so any line carrying IGST means the whole invoice is inter-state.
+      const sply_ty: 'INTER' | 'INTRA' = inv.lines.some((l) => l.igst > 0) ? 'INTER' : 'INTRA';
+      for (const l of inv.lines) {
+        const key = `${inv.placeOfSupply}|${l.gstRate}|${sply_ty}`;
+        const row = b2csAgg.get(key) ?? {
+          sply_ty,
+          rt: l.gstRate,
+          pos: inv.placeOfSupply,
+          txval: 0,
+          iamt: 0,
+          camt: 0,
+          samt: 0,
+        };
+        row.txval += l.taxableAmount;
+        row.iamt += l.igst;
+        row.camt += l.cgst;
+        row.samt += l.sgst;
+        b2csAgg.set(key, row);
+      }
     }
   }
+
+  const b2cs = [...b2csAgg.values()].map((row) => ({ ...row, typ: 'OE' }));
 
   return {
     gstin,
@@ -306,9 +323,17 @@ export {
   buildInvoiceQrPayload,
   parseInvoiceQrPayload,
   invoiceQrImageUrl,
+  encodeTextAsQrImage,
   type InvoiceQrInput,
   type ParsedInvoiceQr,
 } from './invoice-qr';
+
+export {
+  buildUpiPaymentUri,
+  upiQrImageUrl,
+  isValidUpiId,
+  type UpiPaymentInput,
+} from './upi';
 
 export {
   DEFAULT_INVOICE_DISPLAY_OPTIONS,

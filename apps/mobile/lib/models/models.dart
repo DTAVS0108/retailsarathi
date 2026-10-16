@@ -158,6 +158,9 @@ class Product {
     this.lowStockThreshold = 5,
     this.isActive = true,
     this.trackSerial = false,
+    this.trackBatch = false,
+    this.variantLabel,
+    this.parentProductId,
     this.serials = const [],
     this.customerCount,
     this.invoiceCount,
@@ -182,6 +185,9 @@ class Product {
   final double lowStockThreshold;
   final bool isActive;
   final bool trackSerial;
+  final bool trackBatch;
+  final String? variantLabel;
+  final String? parentProductId;
   final List<String> serials;
   final int? customerCount;
   final int? invoiceCount;
@@ -226,6 +232,9 @@ class Product {
       lowStockThreshold: asDouble(json['lowStockThreshold'], 5),
       isActive: json['isActive'] != false,
       trackSerial: json['trackSerial'] == true,
+      trackBatch: json['trackBatch'] == true,
+      variantLabel: json['variantLabel']?.toString(),
+      parentProductId: json['parentProductId']?.toString(),
       serials: serials,
       customerCount: json['customerCount'] == null ? null : asInt(json['customerCount']),
       invoiceCount: json['invoiceCount'] == null ? null : asInt(json['invoiceCount']),

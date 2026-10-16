@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Badge, Button, Card, formatINR } from '@retail-sarathi/ui';
 import { AppLoader } from '@/app/_components/app-loader';
 import { confirmDialog } from '@/app/_components/confirm-dialog';
-import { apiWithAuth } from '@/lib/helpers';
+import { apiWithAuth, getStoredUser } from '@/lib/helpers';
 import {
   pageShellClassName,
   MessageBanner,
@@ -14,6 +14,8 @@ import {
   formatDate,
   inputClassName,
   parseError,
+  tableCellClassName,
+  tableHeaderClassName,
   textareaClassName,
   toNumber,
 } from '../_components/dashboard-ui';
@@ -49,6 +51,17 @@ type CurrentPayload = {
   trialDaysLeft?: number | null;
   periodDaysLeft?: number | null;
   billingNote?: string;
+  mode?: string;
+};
+
+type SubscriptionInvoice = {
+  id: string;
+  planCode: string;
+  action: string;
+  amount: number | string;
+  previousPlanCode: string | null;
+  mode: string;
+  createdAt: string;
 };
 
 type BillingCycle = 'monthly' | 'yearly';
@@ -162,8 +175,10 @@ function isEnterprise(plan: Plan | null | undefined) {
 }
 
 export default function SubscriptionPage() {
+  const isOwner = getStoredUser()?.role === 'OWNER';
   const [plans, setPlans] = useState<Plan[]>([]);
   const [current, setCurrent] = useState<CurrentPayload | null>(null);
+  const [invoices, setInvoices] = useState<SubscriptionInvoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -179,12 +194,14 @@ export default function SubscriptionPage() {
   const connectRef = useRef<HTMLElement | null>(null);
 
   const load = useCallback(async () => {
-    const [p, c] = await Promise.all([
+    const [p, c, inv] = await Promise.all([
       apiWithAuth<Plan[]>('/subscriptions/plans'),
       apiWithAuth<CurrentPayload>('/subscriptions/current'),
+      apiWithAuth<SubscriptionInvoice[]>('/subscriptions/invoices').catch(() => []),
     ]);
     setPlans(p);
     setCurrent(c);
+    setInvoices(inv);
   }, []);
 
   useEffect(() => {
@@ -259,6 +276,10 @@ export default function SubscriptionPage() {
       setSuccess('Enterprise is unlimited — connect with our team below');
       return;
     }
+    if (!isOwner) {
+      setError('Only the shop owner can change the subscription plan.');
+      return;
+    }
 
     if (plan.code === currentCode && sub?.status === 'ACTIVE') {
       setSuccess(`Already on ${plan.name}`);
@@ -298,6 +319,10 @@ export default function SubscriptionPage() {
   }
 
   async function cancelPlan() {
+    if (!isOwner) {
+      setError('Only the shop owner can cancel the subscription plan.');
+      return;
+    }
     const ok = await confirmDialog.confirm({
       title: 'Cancel paid plan?',
       message:
@@ -399,6 +424,18 @@ export default function SubscriptionPage() {
       {error ? <MessageBanner tone="error">{error}</MessageBanner> : null}
       {success ? <MessageBanner tone="success">{success}</MessageBanner> : null}
 
+      {current?.mode === 'demo' ? (
+        <div className="flex items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <Badge color="amber">Demo billing</Badge>
+          <span>No real payment gateway is connected — plan switches apply instantly with no actual charge.</span>
+        </div>
+      ) : null}
+      {!isOwner ? (
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+          Only the shop owner can change or cancel the subscription plan — ask an owner if you need a change.
+        </div>
+      ) : null}
+
       {loading ? (
         <AppLoader label="Loading subscription…" />
       ) : !sub ? (
@@ -477,7 +514,7 @@ export default function SubscriptionPage() {
                   {nextPlan ? (
                     <Button
                       type="button"
-                      disabled={busyCode != null}
+                      disabled={busyCode != null || (!isEnterprise(nextPlan) && !isOwner)}
                       onClick={() =>
                         isEnterprise(nextPlan) ? scrollToConnect() : void changePlan(nextPlan)
                       }
@@ -494,7 +531,7 @@ export default function SubscriptionPage() {
                     <Button
                       type="button"
                       variant="secondary"
-                      disabled={busyCode != null}
+                      disabled={busyCode != null || !isOwner}
                       onClick={() => void cancelPlan()}
                     >
                       {busyCode === 'CANCEL' ? 'Cancelling…' : 'Cancel to Free'}
@@ -583,7 +620,7 @@ export default function SubscriptionPage() {
                 <div className="flex flex-wrap gap-2">
                   <Button
                     type="button"
-                    disabled={busyCode != null}
+                    disabled={busyCode != null || (!isEnterprise(nextPlan) && !isOwner)}
                     onClick={() =>
                       isEnterprise(nextPlan) ? scrollToConnect() : void changePlan(nextPlan)
                     }
@@ -743,7 +780,9 @@ export default function SubscriptionPage() {
                             : 'secondary'
                       }
                       disabled={
-                        busyCode != null || (isCurrent && sub.status === 'ACTIVE' && !enterprise)
+                        busyCode != null ||
+                        (isCurrent && sub.status === 'ACTIVE' && !enterprise) ||
+                        (!enterprise && !isOwner)
                       }
                       onClick={() =>
                         enterprise && !isCurrent ? scrollToConnect() : void changePlan(plan)
@@ -965,6 +1004,44 @@ export default function SubscriptionPage() {
                 </table>
               </div>
             ) : null}
+          </Card>
+
+          <Card className="border-slate-200">
+            <h2 className="text-base font-semibold text-slate-900">Billing history</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Demo-mode record of plan changes — amounts are prorated informationally and are not actually charged.
+            </p>
+            {invoices.length ? (
+              <div className="mt-4 overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr>
+                      <th className={tableHeaderClassName}>Date</th>
+                      <th className={tableHeaderClassName}>Action</th>
+                      <th className={tableHeaderClassName}>Plan</th>
+                      <th className={tableHeaderClassName}>Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {invoices.map((inv) => (
+                      <tr key={inv.id} className="border-t border-slate-100">
+                        <td className={tableCellClassName}>{formatDate(inv.createdAt)}</td>
+                        <td className={tableCellClassName}>{inv.action.replace(/_/g, ' ')}</td>
+                        <td className={tableCellClassName}>
+                          {inv.previousPlanCode ? `${inv.previousPlanCode} → ${inv.planCode}` : inv.planCode}
+                        </td>
+                        <td className={tableCellClassName}>
+                          {formatINR(toNumber(inv.amount))}{' '}
+                          <span className="text-xs text-slate-400">(not charged)</span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="mt-3 text-sm text-slate-500">No plan changes recorded yet.</p>
+            )}
           </Card>
 
           <Card className="border-slate-200">

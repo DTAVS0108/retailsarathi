@@ -149,6 +149,67 @@ export function StatCard({
   return <Card className="border-rs-border">{content}</Card>;
 }
 
+/** "▲18%" in a solid green pill when good, "▼7%" in a rose pill when bad — a colorful badge, not
+    just tinted text, so a delta reads at a glance from across the card. `invert` for metrics where
+    lower is better (e.g. turnaround time). Shared by every stat card that shows a period-over-
+    period delta. */
+export function DeltaChip({ value, invert = false }: { value: number | null; invert?: boolean }) {
+  if (value == null) {
+    return (
+      <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">
+        No prior-period data
+      </span>
+    );
+  }
+  if (value === 0) {
+    return (
+      <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">
+        Flat vs previous period
+      </span>
+    );
+  }
+  const isGood = invert ? value < 0 : value > 0;
+  const arrow = value > 0 ? '▲' : '▼';
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${
+        isGood ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'
+      }`}
+    >
+      {arrow} {Math.abs(value)}% vs previous period
+    </span>
+  );
+}
+
+/** Small pill-group toggle — shared by every widget that switches between a few named views
+    (metric, tab, category) without needing a full dropdown. */
+export function SegmentedToggle<T extends string>({
+  options,
+  value,
+  onChange,
+}: {
+  options: Array<{ value: T; label: string }>;
+  value: T;
+  onChange: (v: T) => void;
+}) {
+  return (
+    <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-0.5">
+      {options.map((opt) => (
+        <button
+          key={opt.value}
+          type="button"
+          onClick={() => onChange(opt.value)}
+          className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
+            value === opt.value ? 'bg-white text-brand shadow-sm' : 'text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function EmptyState({
   title,
   description,
@@ -333,13 +394,21 @@ export function ModuleLinkCard({
 export function StatusBadge({ status }: { status: string }) {
   const normalized = status.toUpperCase();
   const color =
-    normalized === 'FINALIZED' || normalized === 'READY' || normalized === 'DELIVERED'
+    normalized === 'FINALIZED' ||
+    normalized === 'READY' ||
+    normalized === 'DELIVERED' ||
+    normalized === 'AVAILABLE'
       ? 'green'
-      : normalized === 'CANCELLED'
+      : normalized === 'CANCELLED' || normalized === 'RETIRED'
         ? 'red'
-        : normalized === 'LOW' || normalized === 'AWAITING_PARTS'
+        : normalized === 'LOW' ||
+            normalized === 'AWAITING_PARTS' ||
+            normalized === 'ON_HOLD' ||
+            normalized === 'ON_LOAN'
           ? 'amber'
-          : normalized === 'IN_REPAIR' || normalized === 'DIAGNOSED'
+          : normalized === 'IN_REPAIR' ||
+              normalized === 'DIAGNOSED' ||
+              normalized === 'AWAITING_CUSTOMER_APPROVAL'
             ? 'teal'
             : 'gray';
 

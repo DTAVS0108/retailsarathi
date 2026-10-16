@@ -10,6 +10,7 @@ import {
   UseGuards,
   UseInterceptors,
   UploadedFile,
+  BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
@@ -45,6 +46,7 @@ const ALLOWED_UPLOAD_EXT = new Set([
   '.csv',
   '.xlsx',
   '.xls',
+  '.docx',
 ]);
 
 const ALLOWED_UPLOAD_MIME = [
@@ -52,6 +54,7 @@ const ALLOWED_UPLOAD_MIME = [
   /^image\//i,
   /^text\/(plain|csv).*/i,
   /spreadsheetml|ms-excel|csv/i,
+  /wordprocessingml/i,
 ];
 
 @ApiTags('scan')
@@ -84,16 +87,10 @@ export class ScanController {
         const ext = extname(file.originalname || '').toLowerCase();
         const mimeOk = ALLOWED_UPLOAD_MIME.some((re) => re.test(file.mimetype || ''));
         const extOk = ALLOWED_UPLOAD_EXT.has(ext);
-        if (mimeOk || extOk) {
-          cb(null, true);
-          return;
-        }
-        cb(
-          new Error(
-            'Unsupported file type. Use PDF, PNG, JPG, WebP, GIF, TXT, CSV, or Excel (.xlsx/.xls).',
-          ) as any,
-          false,
-        );
+        // Reject silently here (cb(null, false)) rather than passing an Error — a plain Error
+        // thrown from multer's fileFilter bypasses Nest's exception pipeline and surfaces as a
+        // raw 500, not a clean 400. The controller below checks for the missing file instead.
+        cb(null, mimeOk || extOk);
       },
     }),
   )
@@ -103,6 +100,11 @@ export class ScanController {
     @Body('createCustomer') createCustomer?: string,
     @Body('extractedText') extractedText?: string,
   ) {
+    if (!file) {
+      throw new BadRequestException(
+        'Unsupported file type. Use PDF, PNG, JPG, WebP, GIF, TXT, CSV, Word (.docx), or Excel (.xlsx/.xls).',
+      );
+    }
     return this.scan.extractUpload(
       user.tenantId,
       file,

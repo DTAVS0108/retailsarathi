@@ -5,8 +5,10 @@ import { confirmDialog } from '@/app/_components/confirm-dialog';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Button, Card, formatINR } from '@retail-sarathi/ui';
+import { Button, Card, formatINR, generateBarcodeLabelsHtml } from '@retail-sarathi/ui';
 import { apiWithAuth, fmtINR } from '@/lib/helpers';
+import { openPrintWindow } from '@/lib/invoice-print';
+import { useShopBranding } from '@/lib/shop-branding';
 import {
   EmptyState,
   MessageBanner,
@@ -28,6 +30,7 @@ import {
 } from '../_components/product-form-dialog';
 import { ProductDetailPanel, type ProductDetail } from '../_components/product-detail-panel';
 import { CategorySelect } from '../_components/category-select';
+import { RowActionsMenu } from '../_components/row-actions-menu';
 
 function ActionWithTooltip({
   tip,
@@ -90,6 +93,10 @@ interface Product {
   stockQty: number;
   lowStockThreshold: number;
   trackSerial?: boolean;
+  trackBatch?: boolean;
+  variantLabel?: string | null;
+  parentProductId?: string | null;
+  parentProduct?: { id: string; name: string } | null;
   imageUrl?: string | null;
   attachments?: unknown[] | null;
   supplierId?: string | null;
@@ -214,6 +221,7 @@ function pageWindow(current: number, totalPages: number) {
 export default function ProductsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { shopName } = useShopBranding();
 
   // ── Filters ──
   const [filters, setFilters] = useState<ListFilters>(() => filtersFromParams(searchParams));
@@ -441,6 +449,21 @@ export default function ProductsPage() {
     } finally {
       setAdjustSaving(false);
     }
+  }
+
+  // ─── Barcode label print ──────────────────────────────────────────────────
+
+  function handlePrintLabel(product: Product) {
+    const value = product.barcode?.trim() || product.sku;
+    const copiesRaw = window.prompt(`Copies to print for ${product.name}:`, '1');
+    if (copiesRaw === null) return;
+    const copies = Math.max(1, Math.floor(Number(copiesRaw)) || 1);
+    const html = generateBarcodeLabelsHtml(
+      [{ value, name: product.name, price: toNumber(product.salePrice), copies }],
+      { shopName },
+    );
+    const err = openPrintWindow(html);
+    if (err) setError(err);
   }
 
   // ─── Remove product ───────────────────────────────────────────────────────
@@ -1212,6 +1235,12 @@ export default function ProductsPage() {
                             SKU:{' '}
                             <span className="font-mono">{product.sku}</span>
                           </p>
+                          {product.parentProduct ? (
+                            <p className="text-xs text-violet-700">
+                              ↳ Variant of {product.parentProduct.name}
+                              {product.variantLabel ? ` (${product.variantLabel})` : ''}
+                            </p>
+                          ) : null}
                           {product.barcode ? (
                             <p className="text-xs text-slate-500">
                               Barcode:{' '}
@@ -1346,61 +1375,60 @@ export default function ProductsPage() {
 
                       {/* Actions */}
                       <td className={cn(tableCellClassName, 'text-right')}>
-                        <div className="flex justify-end gap-2">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="secondary"
-                            onClick={() => {
-                              setEditProduct({
-                                id: product.id,
-                                sku: product.sku,
-                                name: product.name,
-                                barcode: product.barcode,
-                                hsnCode: product.hsnCode,
-                                category: product.category,
-                                brand: product.brand,
-                                model: product.model,
-                                unit: product.unit,
-                                salePrice: product.salePrice,
-                                purchasePrice: product.purchasePrice,
-                                gstRate: product.gstRate,
-                                stockQty: product.stockQty,
-                                lowStockThreshold: product.lowStockThreshold,
-                                trackSerial: product.trackSerial,
-                                imageUrl: product.imageUrl,
-                                attachments: Array.isArray(product.attachments)
-                                  ? (product.attachments as ProductFormInitial['attachments'])
-                                  : [],
-                              });
-                            }}
-                          >
-                            Edit
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant={isAdjusting ? 'ghost' : 'primary'}
-                            onClick={() => {
-                              setAdjustingId(isAdjusting ? null : product.id);
-                              setAdjustQty('');
-                              setAdjustNotes('');
-                            }}
-                          >
-                            {isAdjusting ? 'Hide' : 'Adjust'}
-                          </Button>
-                          {toNumber(product.stockQty) <= 0 ? (
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="secondary"
-                              className="text-rose-700 hover:bg-rose-50"
-                              disabled={saving}
-                              onClick={() => void handleRemoveProduct(product)}
-                            >
-                              Remove
-                            </Button>
-                          ) : null}
+                        <div className="flex justify-end">
+                          <RowActionsMenu
+                            actions={[
+                              {
+                                key: 'edit',
+                                label: 'Edit',
+                                onClick: () => {
+                                  setEditProduct({
+                                    id: product.id,
+                                    sku: product.sku,
+                                    name: product.name,
+                                    barcode: product.barcode,
+                                    hsnCode: product.hsnCode,
+                                    category: product.category,
+                                    brand: product.brand,
+                                    model: product.model,
+                                    unit: product.unit,
+                                    salePrice: product.salePrice,
+                                    purchasePrice: product.purchasePrice,
+                                    gstRate: product.gstRate,
+                                    stockQty: product.stockQty,
+                                    lowStockThreshold: product.lowStockThreshold,
+                                    trackSerial: product.trackSerial,
+                                    imageUrl: product.imageUrl,
+                                    attachments: Array.isArray(product.attachments)
+                                      ? (product.attachments as ProductFormInitial['attachments'])
+                                      : [],
+                                  });
+                                },
+                              },
+                              {
+                                key: 'print-label',
+                                label: 'Print label',
+                                onClick: () => handlePrintLabel(product),
+                              },
+                              {
+                                key: 'adjust',
+                                label: isAdjusting ? 'Hide adjust form' : 'Adjust stock',
+                                onClick: () => {
+                                  setAdjustingId(isAdjusting ? null : product.id);
+                                  setAdjustQty('');
+                                  setAdjustNotes('');
+                                },
+                              },
+                              {
+                                key: 'remove',
+                                label: 'Remove',
+                                tone: 'danger',
+                                hidden: toNumber(product.stockQty) > 0,
+                                disabled: saving,
+                                onClick: () => void handleRemoveProduct(product),
+                              },
+                            ]}
+                          />
                         </div>
                       </td>
                     </tr>

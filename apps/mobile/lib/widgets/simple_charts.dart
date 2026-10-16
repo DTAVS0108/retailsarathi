@@ -1,16 +1,22 @@
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../theme/app_theme.dart';
 import '../theme/app_ui.dart';
 
-List<Color> _chartPalette(AppColorsLookup colors) => [
-      colors.primary,
-      colors.secondary,
-      colors.primaryDark,
-      const Color(0xFFDB2777),
-      const Color(0xFF7C3AED),
-      Color.lerp(colors.primary, Colors.white, 0.25)!,
+/// Validated categorical palette (dataviz skill default) — fixed slot order, not cycled
+/// arbitrarily: clears CVD-separation and normal-vision-floor checks on every adjacent pair.
+/// Fixed hex values (not theme-derived) so charts look consistent with web/desktop.
+const List<Color> _chartPalette = [
+      Color(0xFF2A78D6), // blue
+      Color(0xFFEB6834), // orange
+      Color(0xFF1BAF7A), // aqua
+      Color(0xFFEDA100), // yellow
+      Color(0xFFE87BA4), // magenta
+      Color(0xFF008300), // green
+      Color(0xFF4A3AA7), // violet
+      Color(0xFFE34948), // red
     ];
 
 class ChartPoint {
@@ -69,48 +75,69 @@ class SimpleBarChart extends StatelessWidget {
     final max = points.fold<double>(1, (m, p) => p.value > m ? p.value : m);
     return SizedBox(
       height: height,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          for (final p in points)
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 3),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    Text(
-                      _abbr(p.value),
-                      style: TextStyle(fontSize: 9, color: colors.muted),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 4),
-                    Flexible(
-                      child: FractionallySizedBox(
-                        heightFactor: (p.value / max).clamp(0.04, 1),
-                        widthFactor: 1,
-                        alignment: Alignment.bottomCenter,
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            color: colors.primary,
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      p.label,
-                      style: TextStyle(fontSize: 9, color: colors.muted),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
+      child: BarChart(
+        BarChartData(
+          alignment: BarChartAlignment.spaceAround,
+          maxY: max * 1.2,
+          minY: 0,
+          gridData: const FlGridData(show: false),
+          borderData: FlBorderData(show: false),
+          barTouchData: BarTouchData(
+            touchTooltipData: BarTouchTooltipData(
+              getTooltipColor: (_) => colors.surface,
+              tooltipBorder: BorderSide(color: colors.border),
+              getTooltipItem: (group, groupIndex, rod, rodIndex) => BarTooltipItem(
+                '${points[group.x.toInt()].label}\n',
+                TextStyle(color: colors.inkOn(colors.surface), fontWeight: FontWeight.w700, fontSize: 12),
+                children: [
+                  TextSpan(
+                    text: _abbr(rod.toY),
+                    style: TextStyle(color: colors.muted, fontSize: 11, fontWeight: FontWeight.w500),
+                  ),
+                ],
               ),
             ),
-        ],
+          ),
+          titlesData: FlTitlesData(
+            show: true,
+            topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            bottomTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                reservedSize: 26,
+                getTitlesWidget: (value, meta) {
+                  final i = value.toInt();
+                  if (i < 0 || i >= points.length) return const SizedBox.shrink();
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Text(
+                      points[i].label,
+                      style: TextStyle(fontSize: 9, color: colors.muted),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+          barGroups: [
+            for (var i = 0; i < points.length; i++)
+              BarChartGroupData(
+                x: i,
+                barRods: [
+                  BarChartRodData(
+                    toY: points[i].value,
+                    color: _chartPalette[i % _chartPalette.length],
+                    width: points.length > 6 ? 14 : 22,
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
+                  ),
+                ],
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -125,7 +152,7 @@ class SimpleHBarList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
-    final palette = _chartPalette(colors);
+    final palette = _chartPalette;
     if (points.isEmpty) {
       return Text('No data', style: TextStyle(color: colors.muted));
     }

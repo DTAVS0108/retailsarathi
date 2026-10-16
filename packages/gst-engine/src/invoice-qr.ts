@@ -1,3 +1,5 @@
+import QRCode from 'qrcode';
+
 export interface InvoiceQrInput {
   gstin?: string;
   invoiceNumber: string;
@@ -153,7 +155,42 @@ export function parseInvoiceQrPayload(raw: string): ParsedInvoiceQr {
   return result;
 }
 
+/** Builds a minimal, crisp SVG string directly from QRCode.create()'s public BitMatrix API —
+    synchronous and dependency-free (no `canvas` native binding, no network call). */
+function renderQrSvg(payload: string, size: number): string {
+  const qr = QRCode.create(payload, { errorCorrectionLevel: 'M' });
+  const modules = qr.modules;
+  const dimension = modules.size;
+  let cells = '';
+  for (let row = 0; row < dimension; row++) {
+    for (let col = 0; col < dimension; col++) {
+      if (modules.get(row, col)) {
+        cells += `M${col},${row}h1v1h-1z`;
+      }
+    }
+  }
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${dimension} ${dimension}" width="${size}" height="${size}" shape-rendering="crispEdges"><rect width="${dimension}" height="${dimension}" fill="#fff"/><path d="${cells}" fill="#000"/></svg>`;
+}
+
+/**
+ * Renders the QR entirely locally (no third-party API call). This matters beyond convenience: the
+ * payload here can be a real, government-signed NIC e-invoice SignedQRCode once a tenant goes live
+ * with e-invoicing — sending that to an outside server on every print/preview would leak signed
+ * invoice data. Also removes the only network dependency a QR ever had, so it renders offline.
+ *
+ * `payload` may already be a rendered image (a stored NIC SignedQR that happens to be an image
+ * URL/data-URI) rather than text to encode — that case is passed through unchanged instead of
+ * being wrapped in a second QR.
+ */
 export function invoiceQrImageUrl(payload: string, size = 200): string {
   if (/^https?:\/\//i.test(payload) || /^data:image\//i.test(payload)) return payload;
-  return `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(payload)}`;
+  return encodeTextAsQrImage(payload, size);
+}
+
+/** Encodes `text` as a QR image unconditionally — unlike {@link invoiceQrImageUrl}, an
+    `http(s)://` string here is content to encode (e.g. a public invoice-view link), not an
+    already-rendered image to pass through. */
+export function encodeTextAsQrImage(text: string, size = 200): string {
+  const svg = renderQrSvg(text, size);
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }

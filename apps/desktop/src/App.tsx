@@ -28,6 +28,7 @@ import {
   type PayMethod,
   emptyBillSlot,
 } from './pos/types';
+import type { MigrationStatus } from './types';
 import { normalizeProduct, stateCodeFromGstin, toNum, marginPct, playScanBeep } from './pos/helpers';
 import { HeldTab } from './pos/HeldTab';
 import { ReturnsTab } from './pos/ReturnsTab';
@@ -59,6 +60,17 @@ const NAV_TABS = [
   ['settings', 'Settings'],
 ] as const satisfies ReadonlyArray<readonly [NavTabId, string]>;
 
+function RoleGatedMessage() {
+  return (
+    <div className="flex h-full flex-1 items-center justify-center p-8 text-center">
+      <p className="max-w-sm text-sm" style={{ color: 'var(--rs-muted)' }}>
+        Ask an owner or manager to view this — sales/stock analytics are restricted to owner and
+        manager accounts.
+      </p>
+    </div>
+  );
+}
+
 export default function App() {
   // ── Prefs / API ─────────────────────────────────────────────────────────────
   const { prefs, setPrefs, ready: prefsReady } = useDesktopPrefs();
@@ -69,11 +81,39 @@ export default function App() {
   const [view, setView] = useState<'login' | 'pin' | 'pos'>('login');
   const [tab, setTab] = useState<NavTabId>('bill');
   const [token, setToken] = useState(localStorage.getItem('token') ?? '');
+  const [role, setRole] = useState(localStorage.getItem('role') ?? '');
+  const canViewAnalytics = role === 'OWNER' || role === 'MANAGER' || !role;
   const [loginMsg, setLoginMsg] = useState('');
   const [msg, setMsg] = useState('');
   const [pinChecked, setPinChecked] = useState(false);
   useToastMessage(msg, setMsg);
   useToastMessage(loginMsg, setLoginMsg);
+
+  // ── Local-DB encryption migration gate ───────────────────────────────────────
+  const [migration, setMigration] = useState<MigrationStatus | null>(null);
+  const [migrationRetrying, setMigrationRetrying] = useState(false);
+
+  const checkMigrationStatus = useCallback(async (autoRetry: boolean) => {
+    const status = await window.retailSarathi.getMigrationStatus();
+    if (status.state === 'blocked' && autoRetry && navigator.onLine && token) {
+      setMigrationRetrying(true);
+      try {
+        const retried = await window.retailSarathi.retryMigration(token, prefs.apiUrl);
+        setMigration(retried);
+      } finally {
+        setMigrationRetrying(false);
+      }
+      return;
+    }
+    setMigration(status);
+  }, [token, prefs.apiUrl]);
+
+  useEffect(() => {
+    void checkMigrationStatus(true);
+  // Re-checks (and auto-retries) whenever a token becomes available — e.g. right after login —
+  // so a blocked-but-not-yet-logged-in device doesn't need a separate manual retry click.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
 
   // ── Catalog ──────────────────────────────────────────────────────────────────
   const [products, setProducts] = useState<ApiProduct[]>([]);
@@ -158,6 +198,7 @@ export default function App() {
   // ── Sync state ────────────────────────────────────────────────────────────────
   const [syncing, setSyncing] = useState(false);
   const [outboxPending, setOutboxPending] = useState(0);
+  const [outboxFailed, setOutboxFailed] = useState(0);
   const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
   const [syncStatusText, setSyncStatusText] = useState('');
 
@@ -323,8 +364,18 @@ export default function App() {
   }, [prefsReady, pinChecked, token]);
 
   const loadLocalProducts = useCallback(async () => {
-    const items = await window.retailSarathi.getProducts();
-    setProducts(items.map((p) => normalizeProduct(p as unknown as Record<string, unknown>)));
+    const [items, pendingQty] = await Promise.all([
+      window.retailSarathi.getProducts(),
+      window.retailSarathi.getPendingQtyByProduct().catch(() => ({}) as Record<string, number>),
+    ]);
+    setProducts(
+      items.map((p) => {
+        const normalized = normalizeProduct(p as unknown as Record<string, unknown>);
+        const pending = pendingQty[normalized.id] ?? 0;
+        // Bills already queued but not yet server-confirmed shouldn't look sellable again.
+        return pending > 0 ? { ...normalized, stock_qty: Math.max(0, normalized.stock_qty - pending) } : normalized;
+      }),
+    );
   }, []);
 
   const loadOnlineCatalog = useCallback(
@@ -473,14 +524,17 @@ export default function App() {
       });
       const data = await res.json();
       if (data.accessToken) {
+        const userRole: string = data.user?.role ?? '';
         setToken(data.accessToken);
+        setRole(userRole);
         localStorage.setItem('token', data.accessToken);
+        localStorage.setItem('role', userRole);
         setView('pos');
         // Offer optional cashier PIN setup
         try {
           const pin = window.prompt('Set a 4–6 digit cashier PIN for quick unlock? (blank to skip)');
           if (pin && /^\d{4,6}$/.test(pin)) {
-            await window.retailSarathi.setCashierPin({ label: email, pin, token: data.accessToken });
+            await window.retailSarathi.setCashierPin({ label: email, pin, token: data.accessToken, role: userRole });
           }
         } catch {
           /* optional */
@@ -508,8 +562,15 @@ export default function App() {
           setToken(tok);
           localStorage.setItem('token', tok);
         }
+        if (result.role != null) {
+          setRole(result.role);
+          localStorage.setItem('role', result.role);
+        }
         setView('pos');
         return true;
+      }
+      if (result.lockedForMs) {
+        setLoginMsg(`Too many wrong PINs — try again in ${Math.ceil(result.lockedForMs / 1000)}s.`);
       }
     } catch {
       /* ignore */
@@ -845,6 +906,7 @@ export default function App() {
       const r = await window.retailSarathi.sync(token, prefs.apiUrl);
       const cnt = await window.retailSarathi.getOutboxCount();
       setOutboxPending(cnt);
+      setOutboxFailed(r.failed ?? 0);
       setLastSyncAt(new Date().toISOString());
       setSyncStatusText(`Synced ${r.pushed}`);
       await loadOnlineCatalog(token);
@@ -1075,6 +1137,9 @@ export default function App() {
         const invoiceNumber = `LOCAL-${Date.now()}`;
         await window.retailSarathi.saveInvoice({
           invoiceNumber,
+          // Lets the server dedupe if this exact outbox row is ever pushed more than once
+          // (e.g. an interrupted sync retried later) instead of creating a second invoice.
+          idempotencyKey: crypto.randomUUID(),
           lines: totals.lines,
           subtotal: totals.subtotal,
           totalCgst: totals.totalCgst,
@@ -1309,6 +1374,43 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ── Local-DB encryption migration gate ───────────────────────────────────────
+  // Takes priority over login/PIN/POS: an unsynced offline bill must never be silently discarded
+  // by a plaintext→encrypted DB swap, so the whole app waits here until the outbox drains.
+  if (migration?.state === 'blocked' && token) {
+    return (
+      <div className="rs-app flex h-screen items-center justify-center p-6">
+        <div className="rs-surface rs-animate-in w-full max-w-md p-8 text-center">
+          <BrandMark size={56} title={shopName.trim() || 'RetailSarathi'} logoUrl={shopLogoUrl || null} apiUrl={prefs.apiUrl} />
+          <h1 className="rs-display mt-4 text-xl font-bold" style={{ color: 'var(--rs-ink)' }}>
+            Enabling secure storage
+          </h1>
+          <p className="mt-3 text-sm" style={{ color: 'var(--rs-muted)' }}>
+            {migration.pendingCount > 0
+              ? `${migration.pendingCount} bill(s) still need to sync before this device's local storage can be encrypted.`
+              : null}
+            {migration.pendingCount > 0 && migration.failedCount > 0 ? ' ' : null}
+            {migration.failedCount > 0
+              ? `${migration.failedCount} item(s) failed to sync and need to be resolved first (check Settings → Sync).`
+              : null}
+          </p>
+          <p className="mt-2 text-xs" style={{ color: 'var(--rs-muted)' }}>
+            Connect to the internet and retry — nothing is lost, the app just won't proceed until every
+            bill is safely on the server.
+          </p>
+          <button
+            type="button"
+            className="rs-btn-primary mt-5 w-full px-4"
+            disabled={migrationRetrying}
+            onClick={() => void checkMigrationStatus(true)}
+          >
+            {migrationRetrying ? 'Retrying…' : 'Retry now'}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // ── Login view ─────────────────────────────────────────────────────────────
   if (view === 'login') {
     return (
@@ -1390,6 +1492,7 @@ export default function App() {
             online={isOnline}
             syncing={syncing}
             pending={outboxPending}
+            failed={outboxFailed}
             lastSyncAt={lastSyncAt}
             statusText={syncStatusText}
           />
@@ -1447,12 +1550,16 @@ export default function App() {
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
 
           {tab === 'stats' ? (
-            <StatsPanel
-              token={token}
-              apiFetch={apiFetch}
-              onFilterCategory={(category) => { setPickerCategory(category); setPickerGstRate('all'); setPickerBrand(''); setPickerStock('all'); setPickerQuery(''); setTab('bill'); setPickerOpen(true); }}
-              onFilterGst={(gstRate) => { setPickerGstRate(gstRate); setPickerCategory(''); setPickerBrand(''); setPickerStock('all'); setPickerQuery(''); setTab('bill'); setPickerOpen(true); }}
-            />
+            canViewAnalytics ? (
+              <StatsPanel
+                token={token}
+                apiFetch={apiFetch}
+                onFilterCategory={(category) => { setPickerCategory(category); setPickerGstRate('all'); setPickerBrand(''); setPickerStock('all'); setPickerQuery(''); setTab('bill'); setPickerOpen(true); }}
+                onFilterGst={(gstRate) => { setPickerGstRate(gstRate); setPickerCategory(''); setPickerBrand(''); setPickerStock('all'); setPickerQuery(''); setTab('bill'); setPickerOpen(true); }}
+              />
+            ) : (
+              <RoleGatedMessage />
+            )
           ) : null}
 
           {tab === 'products' ? (
@@ -1475,13 +1582,17 @@ export default function App() {
           ) : null}
           {tab === 'ledgers' ? (
             <div className="min-h-0 flex-1 overflow-hidden">
-              <LedgersPanel
-                token={token}
-                apiFetch={apiFetch}
-                onOpenKhata={() => setTab('parties')}
-                invoiceTemplateId={prefs.invoiceTemplateId}
-                apiUrl={prefs.apiUrl}
-              />
+              {canViewAnalytics ? (
+                <LedgersPanel
+                  token={token}
+                  apiFetch={apiFetch}
+                  onOpenKhata={() => setTab('parties')}
+                  invoiceTemplateId={prefs.invoiceTemplateId}
+                  apiUrl={prefs.apiUrl}
+                />
+              ) : (
+                <RoleGatedMessage />
+              )}
             </div>
           ) : null}
           {tab === 'repairs' ? (

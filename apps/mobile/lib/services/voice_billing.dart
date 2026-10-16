@@ -193,7 +193,15 @@ class VoiceBillingService extends ChangeNotifier {
     return HinglishVoiceParser.parse(heard);
   }
 
-  ProductVoiceMatch? bestMatch(VoiceCartIntent intent, List<ProductVoiceMatch> catalog) {
+  /// Below 0.34 there's no usable match at all. Between 0.34 and [confirmBelow] the match is
+  /// returned but marginal — callers should confirm with the user before silently billing it,
+  /// since a similarly-named but wrong product could otherwise get added without anyone noticing.
+  static const confirmBelow = 0.6;
+
+  ({ProductVoiceMatch product, double score})? bestMatch(
+    VoiceCartIntent intent,
+    List<ProductVoiceMatch> catalog,
+  ) {
     ProductVoiceMatch? best;
     var bestScore = 0.0;
     for (final p in catalog) {
@@ -209,8 +217,8 @@ class VoiceBillingService extends ChangeNotifier {
         best = p;
       }
     }
-    if (bestScore < 0.34) return null;
-    return best;
+    if (bestScore < 0.34 || best == null) return null;
+    return (product: best, score: bestScore);
   }
 
   Future<void> stop() async {

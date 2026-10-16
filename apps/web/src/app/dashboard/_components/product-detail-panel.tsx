@@ -61,6 +61,19 @@ export type ProductDetail = {
     times: number;
     qty: number;
   }>;
+  batches?: Array<{
+    id: string;
+    batchNumber: string;
+    expiryDate?: string | null;
+    quantity: number | string;
+  }>;
+  variants?: Array<{
+    id: string;
+    name: string;
+    sku: string;
+    variantLabel?: string | null;
+    stockQty: number | string;
+  }>;
 };
 
 function marginPct(sale: number, cost: number) {
@@ -119,6 +132,110 @@ function MetricCard({
   );
 }
 
+function BatchesSection({
+  productId,
+  initialBatches,
+}: {
+  productId: string;
+  initialBatches: NonNullable<ProductDetail['batches']>;
+}) {
+  const [batches, setBatches] = useState(initialBatches);
+  const [adding, setAdding] = useState(false);
+  const [batchNumber, setBatchNumber] = useState('');
+  const [expiryDate, setExpiryDate] = useState('');
+  const [quantity, setQuantity] = useState('');
+  const [error, setError] = useState('');
+
+  async function addBatch() {
+    if (!batchNumber.trim() || !quantity.trim()) {
+      setError('Batch number and quantity are required');
+      return;
+    }
+    setAdding(true);
+    setError('');
+    try {
+      const saved = await apiWithAuth<{ id: string; batchNumber: string; expiryDate?: string | null; quantity: number | string }>(
+        `/products/${productId}/batches`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            batchNumber: batchNumber.trim(),
+            expiryDate: expiryDate || undefined,
+            quantity: Number(quantity),
+          }),
+        },
+      );
+      setBatches((prev) => {
+        const next = prev.filter((b) => b.batchNumber !== saved.batchNumber);
+        return [...next, saved].sort((a, b) => (a.expiryDate ?? '').localeCompare(b.expiryDate ?? ''));
+      });
+      setBatchNumber('');
+      setExpiryDate('');
+      setQuantity('');
+    } catch (err) {
+      setError(parseError(err));
+    } finally {
+      setAdding(false);
+    }
+  }
+
+  const totalQty = batches.reduce((s, b) => s + toNumber(b.quantity), 0);
+
+  return (
+    <section className="rounded-xl border border-slate-200 px-3.5 py-3">
+      <h4 className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+        Batches · {totalQty} units across {batches.length} batch{batches.length === 1 ? '' : 'es'}
+      </h4>
+      {!batches.length ? (
+        <p className="mb-2 text-xs text-slate-500">No batches on file yet.</p>
+      ) : (
+        <ul className="mb-2 max-h-40 space-y-1 overflow-auto text-xs">
+          {batches.map((b) => (
+            <li key={b.id} className="flex justify-between gap-2 rounded-lg bg-slate-50 px-2 py-1.5">
+              <span className="font-mono">{b.batchNumber}</span>
+              <span className="text-slate-500">
+                {b.expiryDate ? `Exp ${new Date(b.expiryDate).toLocaleDateString('en-IN')}` : 'No expiry'} ·{' '}
+                <span className="font-semibold text-slate-700">{toNumber(b.quantity)} units</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="grid grid-cols-3 gap-1.5">
+        <input
+          className="rounded-lg border border-slate-200 px-2 py-1.5 text-xs"
+          placeholder="Batch #"
+          value={batchNumber}
+          onChange={(e) => setBatchNumber(e.target.value)}
+        />
+        <input
+          type="date"
+          className="rounded-lg border border-slate-200 px-2 py-1.5 text-xs"
+          value={expiryDate}
+          onChange={(e) => setExpiryDate(e.target.value)}
+        />
+        <input
+          type="number"
+          min="0"
+          className="rounded-lg border border-slate-200 px-2 py-1.5 text-xs"
+          placeholder="Qty"
+          value={quantity}
+          onChange={(e) => setQuantity(e.target.value)}
+        />
+      </div>
+      {error ? <p className="mt-1 text-xs text-rose-700">{error}</p> : null}
+      <button
+        type="button"
+        disabled={adding}
+        onClick={() => void addBatch()}
+        className="mt-2 w-full rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+      >
+        {adding ? 'Saving…' : 'Add / update batch'}
+      </button>
+    </section>
+  );
+}
+
 function DetailRow({ label, value, mono }: { label: string; value?: string | null; mono?: boolean }) {
   if (!value) return null;
   return (
@@ -150,6 +267,7 @@ export function ProductDetailBody({ detail }: { detail: ProductDetail }) {
         <Chip>{toNumber(detail.gstRate)}% GST</Chip>
         {detail.category ? <Chip>{detail.category}</Chip> : null}
         {detail.trackSerial ? <Chip tone="warn">IMEI tracked</Chip> : null}
+        {detail.trackBatch ? <Chip tone="warn">Batch tracked</Chip> : null}
         {detail.needsEnrichment ? <Chip tone="warn">Needs details</Chip> : null}
       </div>
 
@@ -212,6 +330,27 @@ export function ProductDetailBody({ detail }: { detail: ProductDetail }) {
               ))}
             </ul>
           )}
+        </section>
+      ) : null}
+
+      {detail.trackBatch ? <BatchesSection productId={detail.id} initialBatches={detail.batches ?? []} /> : null}
+
+      {detail.variants?.length ? (
+        <section className="rounded-xl border border-slate-200 px-3.5 py-3">
+          <h4 className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+            Variants · {detail.variants.length}
+          </h4>
+          <ul className="space-y-1 text-xs">
+            {detail.variants.map((v) => (
+              <li key={v.id} className="flex justify-between gap-2 rounded-lg bg-slate-50 px-2 py-1.5">
+                <span>
+                  <span className="font-medium text-slate-800">{v.variantLabel || v.name}</span>{' '}
+                  <span className="font-mono text-slate-400">{v.sku}</span>
+                </span>
+                <span className="shrink-0 tabular-nums text-slate-500">{toNumber(v.stockQty)} units</span>
+              </li>
+            ))}
+          </ul>
         </section>
       ) : null}
 
@@ -335,8 +474,12 @@ export function ProductDetailPanel({
       try {
         setLoading(true);
         setError('');
-        const res = await apiWithAuth<ProductDetail>(`/products/${productId}`);
-        if (!cancelled) setDetail(res);
+        const [res, batches, variants] = await Promise.all([
+          apiWithAuth<ProductDetail>(`/products/${productId}`),
+          apiWithAuth<ProductDetail['batches']>(`/products/${productId}/batches`).catch(() => []),
+          apiWithAuth<ProductDetail['variants']>(`/products/${productId}/variants`).catch(() => []),
+        ]);
+        if (!cancelled) setDetail({ ...res, batches, variants });
       } catch (err) {
         if (!cancelled) {
           setDetail(null);

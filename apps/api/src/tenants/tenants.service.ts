@@ -1,31 +1,42 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { unlinkSync } from 'fs';
 import { Prisma } from '@prisma/client';
 import { mergeLedgerSettings, mergeNumberingSettings } from '@retail-sarathi/gst-engine';
 import { PrismaService } from '../prisma/prisma.service';
 import { BILLING_TEMPLATES, isBillingTemplateId } from '../billing/billing-templates';
-import { validateGstin } from '@retail-sarathi/gst-engine';
+import { validateGstin, isValidUpiId } from '@retail-sarathi/gst-engine';
 import {
   deleteTenantLogoFile,
   isAllowedLogoMime,
   storeTenantLogoFile,
 } from './tenant-logo.util';
+import { slugify } from '../common/slug.util';
 
 @Injectable()
 export class TenantsService {
   constructor(private prisma: PrismaService) {}
 
-  async getProfile(tenantId: string) {
-    return this.prisma.tenant.findUnique({
+  /**
+   * Broadly readable (POS/Scan/Repairs/branding need shop name, GSTIN, address for every role),
+   * but bank/UPI payout details are stripped for non-OWNER/MANAGER callers — those fields have
+   * no operational reason to reach a cashier/technician's browser.
+   */
+  async getProfile(tenantId: string, callerRole?: string) {
+    const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
       include: { branches: true },
     });
+    if (!tenant) return tenant;
+    if (callerRole === 'OWNER' || callerRole === 'MANAGER') return tenant;
+    const { bankName, bankAccountNo, bankIfsc, bankBranch, upiId, ...rest } = tenant;
+    return rest;
   }
 
   async updateProfile(
     tenantId: string,
     data: {
       name?: string;
+      slug?: string;
       gstin?: string;
       stateCode?: string;
       compositionScheme?: boolean;
@@ -34,15 +45,30 @@ export class TenantsService {
       address?: string;
       defaultInvoiceTemplate?: string;
       mobileInvoiceTemplate?: string;
+      invoiceCopyCount?: number;
       invoiceDisplayOptions?: Record<string, unknown>;
       bankName?: string;
       bankAccountNo?: string;
       bankIfsc?: string;
       bankBranch?: string;
+      upiId?: string;
       invoiceNumbering?: Record<string, unknown>;
       ledgerSettings?: Record<string, unknown>;
+      expectedCheckInTime?: string;
     },
+    callerRole?: string,
   ) {
+    // GSTIN/bank/UPI changes redirect where customer money lands — OWNER-only, even though the
+    // rest of this shared settings form (invoice template, numbering, ledger options, etc.) is
+    // fine for a MANAGER to edit.
+    const ownerOnlyFields: Array<keyof typeof data> = ['gstin', 'bankName', 'bankAccountNo', 'bankIfsc', 'bankBranch', 'upiId'];
+    if (callerRole && callerRole !== 'OWNER') {
+      const touched = ownerOnlyFields.filter((f) => data[f] !== undefined);
+      if (touched.length) {
+        throw new ForbiddenException(`Only the shop owner can change: ${touched.join(', ')}`);
+      }
+    }
+
     if (
       data.defaultInvoiceTemplate !== undefined &&
       !isBillingTemplateId(data.defaultInvoiceTemplate)
@@ -55,8 +81,32 @@ export class TenantsService {
     ) {
       throw new BadRequestException('Invalid mobile invoice template');
     }
+    if (
+      data.invoiceCopyCount !== undefined &&
+      (!Number.isInteger(data.invoiceCopyCount) || data.invoiceCopyCount < 1 || data.invoiceCopyCount > 3)
+    ) {
+      throw new BadRequestException('Invoice copy count must be 1 (Original), 2 (+ Duplicate), or 3 (+ Triplicate)');
+    }
 
     const patch: typeof data = { ...data };
+    if (patch.slug !== undefined) {
+      const slug = slugify(patch.slug);
+      if (!slug) {
+        throw new BadRequestException('Public URL cannot be empty');
+      }
+      const existing = await this.prisma.tenant.findUnique({ where: { slug } });
+      if (existing && existing.id !== tenantId) {
+        throw new BadRequestException('That public URL is already taken — try another');
+      }
+      patch.slug = slug;
+    }
+    if (patch.upiId !== undefined) {
+      const upi = patch.upiId.trim();
+      if (upi && !isValidUpiId(upi)) {
+        throw new BadRequestException('Invalid UPI ID — expected format like shopname@okhdfcbank');
+      }
+      patch.upiId = upi || undefined;
+    }
     if (patch.gstin !== undefined) {
       const gstin = String(patch.gstin || '')
         .replace(/[\s\-]/g, '')

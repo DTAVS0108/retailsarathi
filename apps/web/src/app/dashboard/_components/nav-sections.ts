@@ -95,6 +95,10 @@ export const NAV_SECTIONS: NavSection[] = [
     description: 'Workshop jobs and service billing.',
     items: [
       { href: '/dashboard/repairs', label: 'Repair Jobs', id: 'repairs', icon: 'repairs', description: 'Intake → estimate → delivery' },
+      { href: '/dashboard/repairs/services', label: 'Repair Services', id: 'repair-services', icon: 'repair-services', description: 'Common services & default pricing' },
+      { href: '/dashboard/loaner-devices', label: 'Loaner Devices', id: 'loaner-devices', icon: 'loaner-devices', description: 'Replacement devices while repairs are in progress' },
+      { href: '/dashboard/repairs/analytics', label: 'Repair Analytics', id: 'repair-analytics', icon: 'repair-analytics', description: 'Turnaround, throughput & revenue' },
+      { href: '/dashboard/repairs/records', label: 'Repair Records', id: 'repair-records', icon: 'repair-records', description: 'All-time history, search & bulk cleanup' },
     ],
   },
   {
@@ -164,13 +168,6 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { href: '/dashboard/analytics', label: 'Analytics', id: 'analytics', icon: 'analytics', description: 'ABC, margins, salespeople' },
       { href: '/dashboard/ai', label: 'AI Insights', id: 'ai', icon: 'ai', description: 'Reorder & forecast helpers' },
-      {
-        href: '/dashboard/roadmap',
-        label: 'Upgrade roadmap',
-        id: 'roadmap',
-        icon: 'roadmap',
-        description: 'Building now + Coming soon',
-      },
     ],
   },
   {

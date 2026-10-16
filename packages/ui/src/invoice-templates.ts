@@ -3,6 +3,7 @@ import { resolveInvoiceCopyLabel } from './print';
 import {
   buildInvoiceQrPayload,
   invoiceQrImageUrl,
+  encodeTextAsQrImage,
   DEFAULT_INVOICE_DISPLAY_OPTIONS,
   formatUnitLabel,
   type InvoiceDisplayOptions,
@@ -216,13 +217,19 @@ function amountInWordsIndian(amount: number): string {
 
 function printStyles(extra = '') {
   return `
-  @page { size: A4; margin: 12mm; }
+  /* margin: 0 here, not a real page margin — a nonzero @page margin is exactly the box Chrome
+     draws its own URL/date/page-number footer into. The actual visual margin instead comes from
+     .page/.tally-page's own padding below (forced via !important since each template's "extra"
+     CSS block, which also sets its own smaller padding, is interpolated after this and would
+     otherwise win the cascade). */
+  @page { size: A4; margin: 0; }
   @media print {
     body { margin: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .no-print { display: none !important; }
   }
   * { box-sizing: border-box; }
   body { font-family: 'Segoe UI', Arial, sans-serif; color: #0f172a; font-size: 12px; line-height: 1.45; margin: 0; }
+  .page, .tally-page { padding: 12mm !important; }
   table { width: 100%; border-collapse: collapse; }
   th, td { padding: 7px 8px; vertical-align: top; }
   .num { text-align: right; white-space: nowrap; }
@@ -397,20 +404,31 @@ function qrPayloadFromPrintData(data: PrintInvoiceData): string {
   });
 }
 
-function qrPlaceholder(data: PrintInvoiceData) {
-  if (!displayOpts(data).showQr) return '';
+/** A shop (non-NIC) QR encodes a link to the invoice's public view page when one is available,
+    so a customer's scan opens the actual invoice rather than raw pipe-delimited text. The NIC
+    e-invoice QR is untouched — that's a government-signed payload, not ours to redirect. */
+function resolveQrSrc(data: PrintInvoiceData): string {
   const stored = data.einvoiceQr?.trim();
   const isImage =
     !!stored && (/^https?:\/\//i.test(stored) || /^data:image\//i.test(stored));
-  const payload = isImage
-    ? qrPayloadFromPrintData({ ...data, einvoiceQr: undefined })
-    : qrPayloadFromPrintData(data);
-  const src = isImage ? stored! : invoiceQrImageUrl(payload);
+  if (isImage) return stored!;
+  if (data.qrKind === 'shop' && data.publicViewUrl) return encodeTextAsQrImage(data.publicViewUrl);
+  return invoiceQrImageUrl(qrPayloadFromPrintData(data));
+}
+
+function qrPlaceholder(data: PrintInvoiceData) {
+  if (!displayOpts(data).showQr) return '';
+  const src = resolveQrSrc(data);
   const nic = data.qrKind === 'nic';
   const label = nic ? 'NIC e-Invoice QR' : 'Invoice QR (shop)';
-  return `<div class="box qr-box">
+  // A real NIC e-invoice QR must print at a minimum ~3x3in / 290x290px with white padding
+  // (Rule 46 + NIC spec) — a shop's own verification QR carries no such legal size requirement,
+  // so it stays compact. 260px is the practical ceiling that still fits this box's 280px column
+  // without restructuring the surrounding grid.
+  const size = nic ? 260 : 96;
+  return `<div class="box qr-box"${nic ? ' style="background:#fff;padding:16px"' : ''}>
     <div class="label">${label}</div>
-    <img src="${escapeHtml(src)}" alt="${label}" style="width:96px;height:96px;margin-top:6px;image-rendering:pixelated" />
+    <img src="${escapeHtml(src)}" alt="${label}" style="width:${size}px;height:${size}px;margin-top:6px;image-rendering:pixelated" />
     ${data.irn && displayOpts(data).showIrn ? `<div class="muted" style="margin-top:6px">IRN: ${escapeHtml(data.irn)}</div>` : `<div class="muted" style="margin-top:6px">${nic ? 'Signed QR from NIC / GSP' : 'Shop verification QR (not NIC SignedQR)'}</div>`}
   </div>`;
 }
@@ -513,7 +531,7 @@ function tallyPrintStyles(extra = '') {
   .tally-meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0; border: 1px solid #111; }
   .tally-meta-grid > div { border: 1px solid #111; padding: 4px 6px; min-height: 28px; font-size: 10px; }
   .tally-meta-grid .meta-label { font-size: 9px; color: #444; display: block; }
-  .tally-head { display: grid; grid-template-columns: 1fr 130px; gap: 10px; align-items: start; }
+  .tally-head { display: grid; grid-template-columns: 1fr 170px; gap: 10px; align-items: start; }
   .tally-qr img { width: 118px; height: 118px; border: 1px solid #111; image-rendering: pixelated; }
   .tally-irn { font-size: 9px; word-break: break-all; line-height: 1.35; margin-top: 4px; }
   .tally-footer-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 10px; margin-top: 10px; }
@@ -526,13 +544,7 @@ function tallyPrintStyles(extra = '') {
 
 function qrImageSrc(data: PrintInvoiceData): string | null {
   if (!displayOpts(data).showQr) return null;
-  const stored = data.einvoiceQr?.trim();
-  const isImage =
-    !!stored && (/^https?:\/\//i.test(stored) || /^data:image\//i.test(stored));
-  const payload = isImage
-    ? qrPayloadFromPrintData({ ...data, einvoiceQr: undefined })
-    : qrPayloadFromPrintData(data);
-  return isImage ? stored! : invoiceQrImageUrl(payload);
+  return resolveQrSrc(data);
 }
 
 interface HsnRollup {
@@ -680,7 +692,7 @@ function renderTallyEinvoice(data: PrintInvoiceData) {
   const primaryUnit = lineUqc(data.lines[0] ?? { qty: 0, rate: 0, amount: 0, gstRate: 0, name: '' });
   const qrHead = qrSrc
     ? `<div class="tally-qr" style="text-align:center">
-      <img src="${escapeHtml(qrSrc)}" alt="Invoice QR" />
+      <img src="${escapeHtml(qrSrc)}" alt="Invoice QR"${data.qrKind === 'nic' ? ' style="width:150px;height:150px"' : ''} />
       <div class="tally-sub">${data.qrKind === 'nic' ? 'NIC e-Invoice QR' : 'Invoice QR (shop)'}</div>
     </div>`
     : '';
@@ -729,12 +741,14 @@ function renderTallyEinvoice(data: PrintInvoiceData) {
       <span class="muted">Authorised Signatory</span>
     </div>
   </div>` : ''}
+  ${legalFooter(data)}
   <div class="tally-center muted">This is a Computer Generated Invoice</div>
 </div></body></html>`;
 }
 
 function renderTallyStandard(data: PrintInvoiceData) {
   const opts = displayOpts(data);
+  const qrSrc = qrImageSrc(data);
   const lineRows = data.lines
     .map(
       (l, i) => `<tr>
@@ -803,6 +817,10 @@ function renderTallyStandard(data: PrintInvoiceData) {
     <strong>INR ${amountInWordsIndian(data.totalCgst + data.totalSgst + data.totalIgst)}</strong>
   </div>` : ''}
   ${bankDetailsBlock(data)}
+  ${qrSrc ? `<div class="tally-qr" style="text-align:center;margin-top:8px">
+    <img src="${escapeHtml(qrSrc)}" alt="Invoice QR"${data.qrKind === 'nic' ? ' style="width:150px;height:150px"' : ''} />
+    <div class="tally-sub">${data.qrKind === 'nic' ? 'NIC e-Invoice QR' : 'Invoice QR (shop)'}${opts.showIrn && data.irn ? ` · IRN: ${escapeHtml(data.irn)}` : ''}</div>
+  </div>` : ''}
   ${opts.showSignatures ? `<div class="tally-footer-grid">
     <div class="tally-decl">
       We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.
@@ -814,6 +832,7 @@ function renderTallyStandard(data: PrintInvoiceData) {
       <span class="muted">Authorised Signatory</span>
     </div>
   </div>` : ''}
+  ${legalFooter(data)}
   <div class="tally-center muted">This is a Computer Generated Invoice</div>
 </div></body></html>`;
 }
@@ -874,7 +893,7 @@ function renderGoelEnterprise(data: PrintInvoiceData) {
   .goel-copy { border:1px solid #111; padding:4px 10px; font-size:10px; font-weight:600; }
   .goel-meta { display:grid; grid-template-columns:repeat(4,1fr); gap:0; border:1px solid #111; margin-top:8px; }
   .goel-meta > div { border:1px solid #111; padding:4px 6px; font-size:10px; }
-  .goel-bottom { display:grid; grid-template-columns:130px 1fr; gap:10px; margin-top:10px; align-items:start; }
+  .goel-bottom { display:grid; grid-template-columns:170px 1fr; gap:10px; margin-top:10px; align-items:start; }
 `)}</style></head><body>
 <div class="tally-page">
   <div class="goel-head">
@@ -916,7 +935,7 @@ function renderGoelEnterprise(data: PrintInvoiceData) {
   ${opts.showAmountInWords ? `<div class="tally-box" style="margin-top:8px"><strong>Total in Words:</strong> Rupees ${amountInWordsIndian(data.grandTotal)}</div>` : ''}
   ${qrSrc || opts.showBankDetails || opts.showSignatures ? `<div class="goel-bottom">
     ${qrSrc ? `<div style="text-align:center">
-      <img src="${escapeHtml(qrSrc)}" alt="Invoice QR" style="width:118px;height:118px;border:1px solid #111;image-rendering:pixelated" />
+      <img src="${escapeHtml(qrSrc)}" alt="Invoice QR" style="width:${data.qrKind === 'nic' ? 150 : 118}px;height:${data.qrKind === 'nic' ? 150 : 118}px;border:1px solid #111;image-rendering:pixelated" />
       ${opts.showIrn && data.irn ? `<div class="tally-irn" style="margin-top:6px"><strong>IRN:</strong> ${escapeHtml(data.irn)}</div>` : ''}
     </div>` : '<div></div>'}
     <div>
@@ -1016,6 +1035,7 @@ function renderMinimal(data: PrintInvoiceData) {
   <div class="words"><span class="label">Amount in words</span><br><strong>${amountInWordsIndian(data.grandTotal)}</strong></div>
   ${bankDetailsBlock(data)}
   ${paymentsBlock(data)}
+  ${qrPlaceholder(data)}
   <div class="grid-2"><div class="sig-line"></div><div class="sig-line"></div></div>
   <div class="grid-2 muted"><span>Customer sign</span><span>Authorised signatory</span></div>
   ${legalFooter(data)}
@@ -1109,7 +1129,10 @@ function renderGstFormal(data: PrintInvoiceData, accent: string) {
       ${bankDetailsBlock(data)}
       ${paymentsBlock(data)}
     </div>
-    <table class="tax-table"><tbody>${taxSummaryRows(data)}</tbody></table>
+    <div>
+      <table class="tax-table"><tbody>${taxSummaryRows(data)}</tbody></table>
+      ${qrPlaceholder(data)}
+    </div>
   </div>
   <div class="grid-2" style="margin-top:20px">
     <div><div class="sig-line"></div><span class="muted">Receiver's signature</span></div>
@@ -1163,6 +1186,8 @@ function renderRetailBold(data: PrintInvoiceData, accent: string) {
   </div>
   <div class="thanks">Thank you for shopping with us! · Goods once sold will not be taken back except as per store policy.</div>
   <p class="muted" style="text-align:center;margin-top:8px">Place of supply: ${escapeHtml(stateLabel(data.placeOfSupply ?? data.shopStateCode))}</p>
+  ${qrPlaceholder(data)}
+  ${legalFooter(data)}
 </div></body></html>`;
 }
 

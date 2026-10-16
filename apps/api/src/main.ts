@@ -6,6 +6,15 @@ import { join } from 'path';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
+  // auth.module.ts / jwt.strategy.ts / platform.module.ts all fall back to a hardcoded
+  // 'dev-secret' when JWT_SECRET is unset — harmless in dev, but would silently let a
+  // production deploy sign and verify tokens with a public, guessable secret. Fail loudly
+  // here instead, before the app (and that fallback) ever gets used.
+  if ((process.env.NODE_ENV ?? 'development') === 'production' && !process.env.JWT_SECRET) {
+    console.error('FATAL: JWT_SECRET must be set in production. Refusing to start with the dev fallback secret.');
+    process.exit(1);
+  }
+
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     bodyParser: false,
   });

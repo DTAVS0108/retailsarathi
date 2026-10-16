@@ -17,6 +17,8 @@ export interface InvoicePrintSource {
   createdAt: string;
   grandTotal: number;
   status?: string;
+  /** TAX_INVOICE (default) or CREDIT_NOTE — drives which download action InvoicePrintPanel shows. */
+  documentType?: 'TAX_INVOICE' | 'CREDIT_NOTE';
   notes?: string | null;
   payments?: Array<{ method: string; amount: number; reference?: string | null }>;
   lines?: Array<{

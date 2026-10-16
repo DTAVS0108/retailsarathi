@@ -74,11 +74,17 @@ export function ReturnsTab({
                   className="w-20 rounded border px-2 py-1"
                   style={{ borderColor: 'var(--rs-border)', background: 'var(--rs-surface-2)', color: 'var(--rs-ink)' }}
                   value={l.qty}
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    // Allow an in-progress empty/partial value while typing, but clamp any
+                    // parseable number into [0, max] so an out-of-range qty can't be submitted.
+                    const parsed = Number(raw);
+                    const clamped =
+                      raw === '' || Number.isNaN(parsed) ? raw : String(Math.min(Math.max(0, parsed), l.max));
                     setReturnLines((prev) =>
-                      prev.map((x) => (x.id === l.id ? { ...x, qty: e.target.value } : x)),
-                    )
-                  }
+                      prev.map((x) => (x.id === l.id ? { ...x, qty: clamped } : x)),
+                    );
+                  }}
                 />
               </li>
             ))}

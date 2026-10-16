@@ -27,6 +27,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { CustomersService } from '../customers/customers.service';
 import { InventoryService } from '../inventory/inventory.service';
+import { runServerInvoiceOcr, isImageBuffer, scoreInvoiceOcrText } from './server-ocr.util';
 
 type UploadedFile = {
   originalname: string;
@@ -52,6 +53,9 @@ export type PurchaseLineInput = {
   createIfMissing?: boolean;
   trackSerial?: boolean;
   serialNumbers?: string[];
+  trackBatch?: boolean;
+  batchNumber?: string;
+  expiryDate?: string;
   /** Default true — set false to enrich product without increasing stock yet. */
   commitStock?: boolean;
 };
@@ -167,7 +171,15 @@ export class ScanService {
   async extractUpload(tenantId: string, file: UploadedFile, createCustomer = false, clientText?: string) {
     const raw = await fs.readFile(file.path);
     const serverText = await this.extractText(raw, file.mimetype, file.originalname);
-    const text = (clientText?.trim() || serverText).trim();
+    const clientTrimmed = clientText?.trim() ?? '';
+    // A non-empty client OCR result isn't necessarily better than the server's — score both
+    // with the same heuristic used to pick the best rotation server-side, and keep whichever
+    // actually reads like a real invoice, instead of blindly preferring the client's text.
+    const text = (
+      clientTrimmed && serverText && scoreInvoiceOcrText(serverText) > scoreInvoiceOcrText(clientTrimmed)
+        ? serverText
+        : clientTrimmed || serverText
+    ).trim();
     let extractedData: ReturnType<ScanService['extractInvoiceData']> | Record<string, unknown> = {};
     try {
       extractedData = text ? this.extractInvoiceData(text) : {};
@@ -433,6 +445,7 @@ export class ScanService {
       invoiceDate: formatAppDate(extractedData.invoiceDate) ?? extractedData.invoiceDate,
       gstin: extractedData.gstin,
       customerName: extractedData.customerName,
+      customerAddress: extractedData.customerAddress,
       customerGstin: extractedData.customerGstin,
       phone: extractedData.phone,
       stateName: extractedData.stateName,
@@ -489,6 +502,7 @@ export class ScanService {
         },
         customer: {
           name: extractedData.customerName ?? null,
+          address: extractedData.customerAddress ?? null,
           gstin: extractedData.customerGstin ?? null,
         },
         items: lines.map((l) => ({
@@ -543,6 +557,7 @@ export class ScanService {
       placeOfSupply?: string;
       stateName?: string;
       customerName?: string;
+      customerAddress?: string;
       customerGstin?: string;
       notes?: string;
       /** Explicit opt-in to add lines onto an existing purchase bill with the same invoice #. */
@@ -590,6 +605,8 @@ export class ScanService {
           .map((s) => s.trim())
           .filter(Boolean);
         const trackSerial = Boolean(line.trackSerial);
+        const trackBatch = Boolean(line.trackBatch);
+        const batchNumber = line.batchNumber?.trim();
         const commitStock = line.commitStock !== false;
 
         if (trackSerial && commitStock) {
@@ -690,6 +707,7 @@ export class ScanService {
                 lowStockThreshold: 3,
                 unit: 'pcs',
                 trackSerial,
+                trackBatch,
                 needsEnrichment: false,
               },
             });
@@ -710,6 +728,7 @@ export class ScanService {
         if (line.hsnCode?.trim()) patch.hsnCode = line.hsnCode.trim();
         if (line.gstRate != null) patch.gstRate = nearestGstSlab(Number(line.gstRate));
         if (line.trackSerial != null) patch.trackSerial = trackSerial;
+        if (line.trackBatch != null) patch.trackBatch = trackBatch;
         if (commitStock) patch.stockQty = { increment: qty };
 
         const updated = await tx.product.update({
@@ -717,7 +736,10 @@ export class ScanService {
           data: patch,
         });
 
-        if (trackSerial && serials.length) {
+        // Serials must only go IN_STOCK when stock is actually being committed —
+        // otherwise a soft/pending line (commitStock:false) makes a serial
+        // immediately sellable at POS despite stockQty never having moved.
+        if (trackSerial && serials.length && commitStock) {
           for (const serial of serials) {
             const exists = await tx.productSerial.findFirst({
               where: {
@@ -791,6 +813,25 @@ export class ScanService {
         }
 
         if (commitStock) {
+        let batchId: string | undefined;
+        if (trackBatch && batchNumber) {
+          const batch = await tx.productBatch.upsert({
+            where: { productId_batchNumber: { productId: product.id, batchNumber } },
+            create: {
+              tenantId,
+              productId: product.id,
+              batchNumber,
+              expiryDate: line.expiryDate ? new Date(line.expiryDate) : undefined,
+              quantity: qty,
+            },
+            update: {
+              quantity: { increment: qty },
+              ...(line.expiryDate ? { expiryDate: new Date(line.expiryDate) } : {}),
+            },
+          });
+          batchId = batch.id;
+        }
+
         const notes = [
           'Stock-in from supplier invoice',
           payload.invoiceNumber ? `Inv ${payload.invoiceNumber}` : null,
@@ -798,6 +839,7 @@ export class ScanService {
           payload.supplierName ? `Supplier ${payload.supplierName}` : null,
           payload.gstin ? `GSTIN ${payload.gstin}` : null,
             trackSerial && serials.length ? `Serials: ${serials.join(', ')}` : null,
+            trackBatch && batchNumber ? `Batch: ${batchNumber}` : null,
         ]
           .filter(Boolean)
           .join(' · ');
@@ -809,6 +851,7 @@ export class ScanService {
             type: 'PURCHASE',
             quantity: qty,
               referenceId: payload.uploadId ?? payload.draftId,
+              batchId,
             notes,
             createdAt: stockDate,
           },
@@ -917,6 +960,7 @@ export class ScanService {
       placeOfSupply: payload.placeOfSupply || null,
       stateName: payload.stateName || null,
       customerName: payload.customerName || null,
+      customerAddress: payload.customerAddress || null,
       customerGstin: payload.customerGstin || null,
       cgstAmount: payload.cgstAmount ?? null,
       sgstAmount: payload.sgstAmount ?? null,
@@ -1357,6 +1401,7 @@ export class ScanService {
         purchasePrice: true,
         stockQty: true,
         trackSerial: true,
+        trackBatch: true,
         hsnCode: true,
         gstRate: true,
         category: true,
@@ -1446,7 +1491,7 @@ export class ScanService {
     data: { name?: string; supplierName?: string; fieldMappings?: Record<string, unknown>; sampleText?: string },
   ) {
     const existing = await this.prisma.scanTemplate.findFirst({ where: { id, tenantId } });
-    if (!existing) throw new Error('Scan template not found');
+    if (!existing) throw new NotFoundException('Scan template not found');
     return this.prisma.scanTemplate.update({
       where: { id },
       data: {
@@ -1460,7 +1505,7 @@ export class ScanService {
 
   async deleteTemplate(tenantId: string, id: string) {
     const existing = await this.prisma.scanTemplate.findFirst({ where: { id, tenantId } });
-    if (!existing) throw new Error('Scan template not found');
+    if (!existing) throw new NotFoundException('Scan template not found');
     await this.prisma.scanTemplate.delete({ where: { id } });
     return { deleted: true };
   }
@@ -2482,8 +2527,11 @@ export class ScanService {
 
     // --- Strategy 6: brand keyword fallback ONLY if nothing solid yet ---
     if (byName.size === 0) {
+    // \b...\b around the brand alternation matters: short brand names like "Mi"/"LG" would
+    // otherwise match as a bare substring inside an unrelated word (e.g. "Customicon" contains
+    // "mi", falsely tagging a "Mi" phone line on a document that never mentions Xiaomi at all).
     const keywordPattern =
-        /((?:Exide|Luminous|Amaron|Microtek|Okaya|SF\s*Sonic|V-?Guard|Livguard|APC|Sukam|Genus|Eastman|TechGuru|Samsung|LG|Sony|Mi|Boat|JBL|Havells|Crompton|Orient|Usha|Apple|OnePlus|Realme|Portronics|Spigen)[^\n,]{0,50}?(?:Battery|Inverter|Stabilizer|UPS|Tubular|SMF|Ah|VA|LED|Fan|AC|TV|Mobile|Charger|Earbuds|Cable|Case|iPhone|Buds)?[^\n,]{0,30})/gi;
+        /(\b(?:Exide|Luminous|Amaron|Microtek|Okaya|SF\s*Sonic|V-?Guard|Livguard|APC|Sukam|Genus|Eastman|TechGuru|Samsung|LG|Sony|Mi|Boat|JBL|Havells|Crompton|Orient|Usha|Apple|OnePlus|Realme|Portronics|Spigen)\b[^\n,]{0,50}?(?:Battery|Inverter|Stabilizer|UPS|Tubular|SMF|Ah|VA|LED|Fan|AC|TV|Mobile|Charger|Earbuds|Cable|Case|iPhone|Buds)?[^\n,]{0,30})/gi;
     for (const match of text.matchAll(keywordPattern)) {
       const name = match[1].replace(/\s{2,}/g, ' ').trim();
         if (isGarbageProductName(name)) continue;
@@ -2508,6 +2556,45 @@ export class ScanService {
         brand: this.guessBrand(name),
           },
           1,
+        );
+      }
+    }
+
+    // --- Strategy 7: generic "Qty Description Rate Amount" table, last resort ---
+    // No HSN, no GST%, no brand keyword — just a plain universal invoice-line shape
+    // (common on non-Indian / non-GST templates: "1 Widget 99.00 99.00"). Only runs when
+    // every GST-specific strategy above found nothing, and only accepts a row when the
+    // trailing two numbers are consistent with qty*rate≈amount, to avoid false hits on
+    // unrelated numeric lines (addresses, phone numbers, etc.).
+    if (byName.size === 0) {
+      const genericRowPattern =
+        /^[ \t]*(\d{1,4})[ \t]+([A-Za-z][A-Za-z0-9 .,'&/\-]{2,70}?)[ \t]+([0-9,]+(?:\.\d{1,2})?)[ \t]+([0-9,]+(?:\.\d{1,2})?)[ \t]*$/gim;
+      for (const match of text.matchAll(genericRowPattern)) {
+        const quantity = Number(match[1]);
+        const name = match[2].trim();
+        const rate = Number(String(match[3]).replace(/,/g, ''));
+        const amount = Number(String(match[4]).replace(/,/g, ''));
+        if (!(quantity > 0 && quantity <= 5000)) continue;
+        if (!(rate > 0 && rate <= 5_000_000) || !(amount > 0 && amount <= 5_000_000)) continue;
+        const expected = quantity * rate;
+        if (Math.abs(expected - amount) > Math.max(1, expected * 0.08)) continue;
+        if (isGarbageProductName(name)) continue;
+        if (
+          /^(?:subtotal|total|gst|cgst|sgst|igst|tax|discount|round\s*off|amount|qty|description|unit\s*price|balance|due|paid|grand\s*total)\b/i.test(
+            name,
+          )
+        ) {
+          continue;
+        }
+        pushLine(
+          {
+            name,
+            quantity,
+            unitPrice: rate,
+            category: this.guessCategory(name),
+            brand: this.guessBrand(name),
+          },
+          6,
         );
       }
     }
@@ -2848,15 +2935,43 @@ export class ScanService {
       }
     }
 
-    // Images must be OCR'd on the client — binary bytes are not invoice text.
+    // Word documents (.docx) → plain text via mammoth. Legacy binary .doc is not supported
+    // (no reliable pure-JS parser for the old binary format).
+    const isDocx =
+      mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+      name.endsWith('.docx');
+    if (isDocx) {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const mammoth = require('mammoth') as typeof import('mammoth');
+        const { value } = await mammoth.extractRawText({ buffer });
+        return this.normalizeOcrText(value || '');
+      } catch {
+        return '';
+      }
+    }
+
+    // Images: try real server-side OCR (rotation-tested + scored, same heuristic as the
+    // browser client) as a fallback when the caller hasn't supplied client-extracted text.
+    // This can take 30-60s for a single photo (4 rotation passes + a header-crop pass) —
+    // callers should treat this as a slow path, not a snappy request/response.
     if (
       mimeType?.startsWith('image/') ||
       /\.(png|jpe?g|webp|gif|bmp|heic|heif)$/i.test(name) ||
-      buffer.slice(0, 4).toString('ascii') === 'RIFF' ||
-      buffer.slice(0, 3).toString('ascii') === 'ÿØÿ' ||
-      buffer.slice(0, 8).toString('ascii') === '\x89PNG\r\n\x1a\n'
+      isImageBuffer(buffer, mimeType)
     ) {
-      return '';
+      try {
+        const result = await runServerInvoiceOcr(buffer);
+        // A negative/zero score means the OCR text didn't look like a usable invoice on
+        // any rotation (garbage/blank/binary) — treat that the same as "couldn't OCR" so
+        // the caller still gets the existing needsOcr fallback messaging instead of junk.
+        if (result.score > 0 && result.text.trim().length >= 24) {
+          return this.normalizeOcrText(result.text);
+        }
+        return '';
+      } catch {
+        return '';
+      }
     }
 
     if (isPdf) {
@@ -3045,8 +3160,11 @@ export class ScanService {
         .split('\n')
         .map((l) => l.trim())
         .filter(Boolean);
-      // First non-junk header line is often the firm name (e.g. "NEEL")
-      const first = lines[0]?.replace(/^[|]+\s*/, '') ?? '';
+      // First non-junk header line is often the firm name (e.g. "NEEL"). Strip a trailing
+      // parenthetical/bracket artifact first — a logo placeholder next to the name regularly
+      // OCRs as stray junk like "Saffron Design (Loco", which would otherwise fail the strict
+      // charset check below over one bracket character.
+      const first = (lines[0]?.replace(/^[|]+\s*/, '') ?? '').replace(/\s*[([].*$/, '').trim();
       if (
         first &&
         first.length >= 3 &&
@@ -3136,6 +3254,13 @@ export class ScanService {
         .replace(/^[|[\]()]+/, '')
         .replace(/\s+INVOICE\s+No\.?.*$/i, '')
         .replace(/\s+Bill\s+No\.?.*$/i, '')
+        // Western Bill-To/Ship-To templates can glue the next table header onto a mis-anchored
+        // name candidate (e.g. "Kavindra Mannan ... INVOICE DATE 20/01/2019") — same root cause
+        // as the equivalent customerName cleanup above.
+        .replace(/\s+(?:INVOICE\s+DATE|DUE\s+DATE|SHIP\s+TO|BILL\s*TO|P\.?O\.?\s*#?).*$/i, '')
+        // Trailing bare "INVOICE"/"TAX INVOICE" title bleeding onto the name line when a
+        // right-aligned document title merges with the left-aligned company name column.
+        .replace(/\s+(?:TAX\s+)?INVOICE\s*$/i, '')
         .replace(/\b(TRADERS?)(\d{4}\s*[-–]\s*\d{2,4})\b/gi, '$1 $2')
         .replace(/\s+(\d{4}\s*[-–]\s*\d{2,4})\s*$/g, ' $1')
         .replace(/\s+(?:jf|feooien|fi)\b.*$/i, '')
@@ -3144,6 +3269,16 @@ export class ScanService {
         .replace(/^[:.\-\s]+/, '')
         .replace(/^'\s*s\s+/i, '')
         .trim();
+      // Collapse an exact word-for-word repeat (merged duplicate Bill-To/Ship-To columns).
+      const supplierWords = supplierName.split(/\s+/);
+      if (supplierWords.length >= 2 && supplierWords.length % 2 === 0) {
+        const mid = supplierWords.length / 2;
+        const firstHalf = supplierWords.slice(0, mid).join(' ');
+        const secondHalf = supplierWords.slice(mid).join(' ');
+        if (firstHalf.toLowerCase() === secondHalf.toLowerCase()) {
+          supplierName = firstHalf;
+        }
+      }
       const letters = (supplierName.match(/[A-Za-z\u0900-\u097F]/g) || []).length;
       const symbols = (supplierName.match(/[^A-Za-z0-9\u0900-\u097F\s.&'\/\-]/g) || []).length;
       const tokens = supplierName.split(/\s+/).filter(Boolean);
@@ -3282,7 +3417,21 @@ export class ScanService {
         .replace(/\s*\|.*$/, '')
         .replace(/\s+(?:Dispatch|Dispaten|Delivery|Destination|Buyer's?\s+Order|Terms\s+of|EPS\s+Dov|Dov\s+NG).*$/i, '')
         .replace(/\s+[A-Z]{2,4}\s+Dov\b.*$/i, '')
+        // Western/Bill-To-Ship-To templates glue the next table header onto the name line
+        // when OCR merges side-by-side columns (e.g. "Kavindra Mannan INVOICE DATE 29").
+        .replace(/\s+(?:INVOICE\s+DATE|DUE\s+DATE|SHIP\s+TO|BILL\s*TO|P\.?O\.?\s*#?).*$/i, '')
         .trim();
+      // The same column-merge can duplicate an identical Bill-To/Ship-To name onto one line
+      // ("Kavindra Mannan Kavindra Mannan") — collapse an exact word-for-word repeat in half.
+      const words = customerName.split(/\s+/);
+      if (words.length >= 2 && words.length % 2 === 0) {
+        const mid = words.length / 2;
+        const firstHalf = words.slice(0, mid).join(' ');
+        const secondHalf = words.slice(mid).join(' ');
+        if (firstHalf.toLowerCase() === secondHalf.toLowerCase()) {
+          customerName = firstHalf;
+        }
+      }
     }
     const cleanCustomer =
       customerName &&
@@ -3290,6 +3439,40 @@ export class ScanService {
       (!supplierName || customerName.toLowerCase() !== supplierName.toLowerCase())
         ? customerName
         : undefined;
+
+    // Buyer/ship-to address — same approach as supplierAddress: scan the lines right after the
+    // buyer's name line, stopping at (or truncating before) the next known field/table keyword.
+    let customerAddress: string | undefined;
+    if (cleanCustomer) {
+      const lines = text
+        .replace(/\r\n/g, '\n')
+        .split('\n')
+        .map((l) => l.trim())
+        .filter(Boolean);
+      const key = cleanCustomer.slice(0, 18).toLowerCase();
+      const idx = lines.findIndex((l) => l.toLowerCase().includes(key));
+      if (idx >= 0) {
+        const parts: string[] = [];
+        // Note: the trailing \b after "p\.?o\.?\s*#" never matches (a word boundary can't sit
+        // between "#" and the following space/digit, both non-word chars) — harmless here since
+        // an untruncated "Po# 123" at the end of an address line still reads fine either way.
+        const stopKeywords =
+          /\b(?:gstin?|gstn|uin|invoice\s*(?:no|date|#)|due\s*date|p\.?o\.?\s*#|qty\b|description|unit\s*price|amount|subtotal|total|terms|bank|account\s*number|routing\s*number)\b/i;
+        for (let i = idx + 1; i < Math.min(idx + 4, lines.length); i++) {
+          const line = lines[i].replace(/^[|]+\s*/, '');
+          const stopMatch = line.match(stopKeywords);
+          if (stopMatch) {
+            const before = line.slice(0, stopMatch.index).replace(/[.,]+$/, '').trim();
+            if (before.length >= 4 && /[A-Za-z]{2,}/.test(before)) parts.push(before);
+            break;
+          }
+          if (line.length >= 4 && line.length <= 120 && /[A-Za-z]{2,}/.test(line)) {
+            parts.push(line.replace(/[.,]+$/, '').trim());
+          }
+        }
+        if (parts.length) customerAddress = parts.join(', ');
+      }
+    }
 
     if (!customerGstin && billToIndex >= 0) {
       const buyerSection = normalized.slice(billToIndex, billToIndex + 600);
@@ -3450,7 +3633,7 @@ export class ScanService {
     }
 
     const taxableValue = pick([
-      /(?:taxable\s*value|taxable\s*amount|basic\s*amount)\s*[:.\-]?\s*₹?\s*([0-9,]+(?:\.\d{1,2})?)/i,
+      /(?:taxable\s*value|taxable\s*amount|basic\s*amount|sub[\s-]?total)\s*[:.\-]?\s*₹?\s*([0-9,]+(?:\.\d{1,2})?)/i,
       /(?:^|\n)\s*([0-9,]+(?:\.\d{2}))\s*\n\s*OUTPUT\s+CGST/i,
       /\bTotal\s+([0-9,]+(?:\.\d{2}))\s+[0-9,]+(?:\.\d{2})\s+[0-9,]+(?:\.\d{2})\s+[0-9,]+(?:\.\d{2})/i,
       // Page-2 OCR often prints HSN taxable total as "Total 104237.28" before tax columns
@@ -3644,7 +3827,9 @@ export class ScanService {
     pushTotal(amountInWordsGrand);
     pushTotal(beforeTaxWords);
     for (const m of normalized.matchAll(
-      /(?:^|\n)\s*(?:Grand\s+)?Total\s*[:.\-]?\s*₹?\s*([0-9,]+(?:\.\d{1,2})?)/gi,
+      // "%" tolerated here as a currency symbol stand-in — small/low-res OCR regularly misreads
+      // "₹" as "%" right before a total figure (confirmed on a real sample: "TOTAL %13715.52").
+      /(?:^|\n)\s*(?:Grand\s+)?Total\s*[:.\-]?\s*(?:₹|%)?\s*([0-9,]+(?:\.\d{1,2})?)/gi,
     )) {
       pushTotal(money(m[1]));
     }
@@ -3891,6 +4076,7 @@ export class ScanService {
       supplierName,
       supplierAddress,
       customerName: cleanCustomer,
+      customerAddress,
       phone,
       gstin: supplierGstin,
       customerGstin,

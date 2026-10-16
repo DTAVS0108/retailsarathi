@@ -6,9 +6,9 @@
 
 | Service | URL | Status |
 |---------|-----|--------|
-| **Web** | https://retailsarathi-web.vercel.app | ✅ Live |
-| **API** | https://api-production-167c5.up.railway.app | ✅ Live |
-| **API health** | `/api/v1/health` | ✅ |
+| **Web** | https://retailsarathi-web.vercel.app | ⏸ Pause with `vercel project pause` |
+| **API** | https://api-production-167c5.up.railway.app | ⏸ Down with `railway down` |
+| **API health** | `/api/v1/health` | Offline until you go up again |
 
 After DNS (below): `https://retailsarathi.in` and `https://api.retailsarathi.in`
 
@@ -82,6 +82,56 @@ Configure in GoDaddy → Domains → retailsarathi.in → DNS.
 | **TXT** | `_railway-verify.api` | `railway-verify=a3249c712d33f61dfdf272ffdfdda4c2ba47d5042c4da069349a6b6fa0edfd05` |
 
 After DNS propagates, update Vercel env `API_PROXY_TARGET` to `https://api.retailsarathi.in` and redeploy.
+
+---
+
+## Go up / go down (cloud on/off)
+
+Use this when you want to **stop billing traffic** or **hide the demo** without deleting the project.
+
+### Quick scripts (Windows)
+
+```powershell
+.\scripts\go-down.ps1   # prints exact commands
+.\scripts\go-up.ps1     # prints exact commands
+```
+
+### Take offline (down)
+
+| Layer | Command | What happens |
+|-------|---------|--------------|
+| **Web (Vercel)** | `npx vercel project pause retailsarathi-web` | Visitors see Vercel error page. Type project name to confirm. |
+| **API (Railway)** | `npx @railway/cli service link api` then `npx @railway/cli down --service api --yes` | API URL returns 404; **Postgres stays running** (data kept, may still bill). |
+
+Optional: remove Postgres in [Railway dashboard](https://railway.app) only if you no longer need production data.
+
+### Bring back online (up)
+
+| Layer | Command | Notes |
+|-------|---------|-------|
+| **API** | `npx @railway/cli service link api` → `npx @railway/cli up` | Rebuilds from repo `Dockerfile` / `railway.toml`. |
+| **Web** | `npx vercel project resume retailsarathi-web` → `npx vercel deploy --prod` | Resume serves last prod build; redeploy if code/env changed. |
+| **Seed (once)** | SSH tunnel + `npx ts-node prisma/seed.ts` | Only if DB is empty. See [go-up.ps1](../scripts/go-up.ps1). |
+
+### Verify
+
+```powershell
+# Should fail / 404 when down
+Invoke-RestMethod https://api-production-167c5.up.railway.app/api/v1/health
+Invoke-WebRequest https://retailsarathi-web.vercel.app
+
+# Should succeed when up
+Invoke-RestMethod https://retailsarathi-web.vercel.app/api/v1/health
+```
+
+### Local dev (separate from cloud)
+
+```powershell
+docker compose up -d          # Postgres + Redis
+npm run dev                   # web :3000 + api :4000
+# stop local:
+# Ctrl+C in dev terminals, then: docker compose stop
+```
 
 ---
 

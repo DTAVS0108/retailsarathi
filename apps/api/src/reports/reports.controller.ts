@@ -1,12 +1,14 @@
 import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { ReportsService } from './reports.service';
-import { CurrentUser, JwtPayload } from '../common/decorators';
+import { CurrentUser, JwtPayload, Roles } from '../common/decorators';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RolesGuard } from '../common/roles.guard';
 
 @ApiTags('reports')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('OWNER', 'MANAGER')
 @Controller('reports')
 export class ReportsController {
   constructor(private reports: ReportsService) {}
@@ -60,6 +62,7 @@ export class ReportsController {
   }
 
   @Get('supplier-ledger/:supplierId')
+  @Roles('OWNER', 'MANAGER', 'CASHIER')
   supplierLedger(
     @CurrentUser() user: JwtPayload,
     @Param('supplierId') supplierId: string,
@@ -81,6 +84,7 @@ export class ReportsController {
   }
 
   @Get('customer-ledger/:customerId')
+  @Roles('OWNER', 'MANAGER', 'CASHIER')
   customerLedger(
     @CurrentUser() user: JwtPayload,
     @Param('customerId') customerId: string,
@@ -102,6 +106,7 @@ export class ReportsController {
   }
 
   @Get('day-end')
+  @Roles('OWNER', 'MANAGER', 'CASHIER')
   dayEnd(@CurrentUser() user: JwtPayload, @Query('date') date?: string) {
     return this.reports.dayEnd(user.tenantId, date);
   }
@@ -140,12 +145,14 @@ export class ReportsController {
 
   /** Customer udhaar / receivables list (Khata + Ledgers customer). */
   @Get('receivables')
+  @Roles('OWNER', 'MANAGER', 'CASHIER')
   receivables(@CurrentUser() user: JwtPayload, @Query('format') format?: string) {
     return this.reports.receivablesReport(user.tenantId, { format });
   }
 
   /** Supplier payables list (Khata + Ledgers buy board). */
   @Get('payables')
+  @Roles('OWNER', 'MANAGER', 'CASHIER')
   payables(@CurrentUser() user: JwtPayload, @Query('format') format?: string) {
     return this.reports.payablesReport(user.tenantId, { format });
   }

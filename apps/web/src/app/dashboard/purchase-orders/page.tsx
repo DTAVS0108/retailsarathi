@@ -23,6 +23,7 @@ interface Product {
   name: string;
   sku: string;
   trackSerial?: boolean;
+  trackBatch?: boolean;
 }
 
 interface Supplier {
@@ -77,6 +78,8 @@ export default function PurchaseOrdersPage() {
   const [newLines, setNewLines] = useState<NewLine[]>([{ productId: '', quantity: '1', unitCost: '0' }]);
   const [receiveQty, setReceiveQty] = useState<Record<string, string>>({});
   const [receiveSerials, setReceiveSerials] = useState<Record<string, string>>({});
+  const [receiveBatchNumber, setReceiveBatchNumber] = useState<Record<string, string>>({});
+  const [receiveExpiry, setReceiveExpiry] = useState<Record<string, string>>({});
   const [receiveInvoice, setReceiveInvoice] = useState<Record<string, string>>({});
   const [receiveBillAsDraft, setReceiveBillAsDraft] = useState<Record<string, boolean>>({});
   const [lastBillByPo, setLastBillByPo] = useState<Record<string, PurchaseBillRef | null>>({});
@@ -160,6 +163,8 @@ export default function PurchaseOrdersPage() {
           lineId: l.id,
           quantity,
           serialNumbers: serialNumbers.length ? serialNumbers : undefined,
+          batchNumber: receiveBatchNumber[l.id]?.trim() || undefined,
+          expiryDate: receiveExpiry[l.id] || undefined,
         };
       })
       .filter((r) => r.quantity > 0);
@@ -416,6 +421,7 @@ export default function PurchaseOrdersPage() {
                         <th className={tableHeaderClassName}>Cost</th>
                         {canReceive ? <th className={tableHeaderClassName}>Receive now</th> : null}
                         {canReceive ? <th className={tableHeaderClassName}>Serials / IMEI</th> : null}
+                        {canReceive ? <th className={tableHeaderClassName}>Batch / expiry</th> : null}
                       </tr>
                     </thead>
                     <tbody>
@@ -464,6 +470,31 @@ export default function PurchaseOrdersPage() {
                                       <p className="text-[11px] text-amber-700">Serial-tracked product</p>
                                     ) : null}
                                   </div>
+                                ) : null}
+                              </td>
+                            ) : null}
+                            {canReceive ? (
+                              <td className={tableCellClassName}>
+                                {remaining > 0 && products.find((p) => p.id === l.product.id)?.trackBatch ? (
+                                  <div className="flex flex-col gap-1">
+                                    <input
+                                      className={`${inputClassName} min-w-[8rem] text-xs`}
+                                      placeholder="Batch number"
+                                      value={receiveBatchNumber[l.id] ?? ''}
+                                      onChange={(e) =>
+                                        setReceiveBatchNumber((prev) => ({ ...prev, [l.id]: e.target.value }))
+                                      }
+                                    />
+                                    <input
+                                      type="date"
+                                      className={`${inputClassName} text-xs`}
+                                      value={receiveExpiry[l.id] ?? ''}
+                                      onChange={(e) => setReceiveExpiry((prev) => ({ ...prev, [l.id]: e.target.value }))}
+                                    />
+                                    <p className="text-[11px] text-amber-700">Batch-tracked product</p>
+                                  </div>
+                                ) : remaining > 0 ? (
+                                  '—'
                                 ) : null}
                               </td>
                             ) : null}

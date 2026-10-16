@@ -102,6 +102,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
                 builder: (_) => ProductFormScreen(
                   product: product,
                   categories: masterCategories,
+                  products: products,
                 ),
               ),
             );
@@ -704,6 +705,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
           product: product,
           initialBarcode: initialBarcode,
           categories: masterCategories,
+          products: products,
         ),
       ),
     );
@@ -1259,11 +1261,16 @@ class ProductFormScreen extends StatefulWidget {
     this.product,
     this.initialBarcode,
     this.categories = const [],
+    this.products = const [],
   });
 
   final Product? product;
   final String? initialBarcode;
   final List<String> categories;
+
+  /// Already-loaded product list, reused to let the parent-product picker
+  /// filter client-side instead of hitting a new search endpoint.
+  final List<Product> products;
 
   @override
   State<ProductFormScreen> createState() => _ProductFormScreenState();
@@ -1288,6 +1295,12 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
   late final TextEditingController lowStock;
   double gstRate = 18;
   bool trackSerial = false;
+  bool trackBatch = false;
+  late final TextEditingController variantLabel;
+  late final TextEditingController parentProductQuery;
+  String? parentProductId;
+  String? parentProductLabel;
+  List<Product> parentMatches = const [];
   bool saving = false;
   String? error;
   String? categorySelect;
@@ -1321,6 +1334,14 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
     );
     gstRate = p?.gstRate ?? 18;
     trackSerial = p?.trackSerial ?? false;
+    trackBatch = p?.trackBatch ?? false;
+    variantLabel = TextEditingController(text: p?.variantLabel ?? '');
+    parentProductId = p?.parentProductId;
+    parentProductLabel = widget.products
+        .where((e) => e.id == parentProductId)
+        .map((e) => '${e.name} (${e.sku})')
+        .firstOrNull;
+    parentProductQuery = TextEditingController();
     stockQty = TextEditingController(text: p != null ? p.stockQty.toStringAsFixed(0) : '0');
     lowStock = TextEditingController(
       text: p != null ? p.lowStockThreshold.toStringAsFixed(0) : '5',
@@ -1352,7 +1373,76 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
     purchasePrice.dispose();
     stockQty.dispose();
     lowStock.dispose();
+    variantLabel.dispose();
+    parentProductQuery.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickParentProduct() async {
+    final available = widget.products.where((e) => e.id != widget.product?.id).toList();
+    final picked = await showDialog<Product?>(
+      context: context,
+      builder: (ctx) {
+        var q = '';
+        return StatefulBuilder(
+          builder: (ctx, setModal) {
+            final matches = q.trim().isEmpty
+                ? available
+                : available
+                    .where((e) =>
+                        e.name.toLowerCase().contains(q.trim().toLowerCase()) ||
+                        e.sku.toLowerCase().contains(q.trim().toLowerCase()))
+                    .toList();
+            return AlertDialog(
+              title: const Text('Link to parent product'),
+              content: SizedBox(
+                width: double.maxFinite,
+                height: 380,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    TextField(
+                      autofocus: true,
+                      decoration: const InputDecoration(
+                        hintText: 'Search name or SKU…',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.search_rounded),
+                      ),
+                      onChanged: (v) => setModal(() => q = v),
+                    ),
+                    const SizedBox(height: 8),
+                    Expanded(
+                      child: matches.isEmpty
+                          ? const Center(child: Text('No matching products'))
+                          : ListView.builder(
+                              itemCount: matches.length,
+                              itemBuilder: (_, i) {
+                                final m = matches[i];
+                                return ListTile(
+                                  title: Text(m.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+                                  subtitle: Text(m.sku),
+                                  onTap: () => Navigator.pop(ctx, m),
+                                );
+                              },
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(ctx, null), child: const Text('Cancel')),
+              ],
+            );
+          },
+        );
+      },
+    );
+    if (picked != null) {
+      setState(() {
+        parentProductId = picked.id;
+        parentProductLabel = '${picked.name} (${picked.sku})';
+      });
+    }
   }
 
   Future<void> _save() async {
@@ -1375,6 +1465,9 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
         'gstRate': gstRate,
         'lowStockThreshold': double.parse(lowStock.text.trim()),
         'trackSerial': trackSerial,
+        'trackBatch': trackBatch,
+        'variantLabel': variantLabel.text.trim().isEmpty ? null : variantLabel.text.trim(),
+        'parentProductId': parentProductId,
       };
       if (isEdit) {
         await api.patch('/products/${widget.product!.id}', body: {
@@ -1631,6 +1724,60 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
               title: const Text('Track IMEI / serial'),
               value: trackSerial,
               onChanged: (v) => setState(() => trackSerial = v),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Track batch / expiry'),
+              subtitle: const Text('Stock is consumed earliest-expiry-first automatically'),
+              value: trackBatch,
+              onChanged: (v) => setState(() => trackBatch = v),
+            ),
+            const SizedBox(height: 8),
+            TextFormField(
+              controller: variantLabel,
+              decoration: const InputDecoration(
+                labelText: 'Variant label',
+                hintText: 'e.g. Red / XL',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Parent product',
+              style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w600, fontSize: 13),
+            ),
+            const SizedBox(height: 6),
+            InkWell(
+              onTap: _pickParentProduct,
+              borderRadius: BorderRadius.circular(8),
+              child: InputDecorator(
+                decoration: const InputDecoration(border: OutlineInputBorder()),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        parentProductLabel ?? 'None — tap to link as a variant of another product',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: parentProductLabel == null ? AppColors.muted : null,
+                        ),
+                      ),
+                    ),
+                    if (parentProductId != null)
+                      IconButton(
+                        tooltip: 'Clear',
+                        icon: const Icon(Icons.close_rounded, size: 18),
+                        onPressed: () => setState(() {
+                          parentProductId = null;
+                          parentProductLabel = null;
+                        }),
+                      )
+                    else
+                      const Icon(Icons.chevron_right_rounded),
+                  ],
+                ),
+              ),
             ),
             const SizedBox(height: 12),
             FilledButton(

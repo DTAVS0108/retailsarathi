@@ -1,36 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ApiFetch } from './api';
 import { useToastMessage } from './toast';
+import { REPAIR_STATUS_FLOW, type RepairStatus } from '@retail-sarathi/types';
 
-type RepairStatus =
-  | 'RECEIVED'
-  | 'DIAGNOSED'
-  | 'AWAITING_PARTS'
-  | 'IN_REPAIR'
-  | 'READY'
-  | 'DELIVERED'
-  | 'CANCELLED';
+const STATUS_FLOW = REPAIR_STATUS_FLOW;
 
-const STATUS_FLOW: Record<RepairStatus, RepairStatus[]> = {
-  RECEIVED: ['DIAGNOSED', 'CANCELLED'],
-  DIAGNOSED: ['AWAITING_PARTS', 'IN_REPAIR', 'CANCELLED'],
-  AWAITING_PARTS: ['IN_REPAIR', 'CANCELLED'],
-  IN_REPAIR: ['READY', 'CANCELLED'],
-  READY: ['DELIVERED'],
-  DELIVERED: [],
-  CANCELLED: [],
-};
-
-const STATUS_FILTERS: Array<RepairStatus | 'ALL'> = [
-  'ALL',
-  'RECEIVED',
-  'DIAGNOSED',
-  'AWAITING_PARTS',
-  'IN_REPAIR',
-  'READY',
-  'DELIVERED',
-  'CANCELLED',
-];
+const STATUS_FILTERS: Array<RepairStatus | 'ALL'> = ['ALL', ...(Object.keys(REPAIR_STATUS_FLOW) as RepairStatus[])];
 
 type Customer = { id: string; name: string; phone: string };
 type Technician = { id: string; name: string; email?: string };
@@ -81,35 +56,13 @@ function statusTone(status: string) {
   if (status === 'DELIVERED') return { bg: 'color-mix(in srgb, #059669 18%, var(--rs-surface))', fg: '#047857' };
   if (status === 'CANCELLED') return { bg: 'color-mix(in srgb, #dc2626 16%, var(--rs-surface))', fg: '#b91c1c' };
   if (status === 'READY') return { bg: 'color-mix(in srgb, var(--rs-accent) 18%, var(--rs-surface))', fg: 'var(--rs-accent)' };
-  if (status === 'IN_REPAIR' || status === 'AWAITING_PARTS')
+  if (status === 'IN_REPAIR' || status === 'AWAITING_PARTS' || status === 'ON_HOLD')
     return { bg: 'color-mix(in srgb, #ca8a04 16%, var(--rs-surface))', fg: '#a16207' };
+  if (status === 'AWAITING_CUSTOMER_APPROVAL')
+    return { bg: 'color-mix(in srgb, var(--rs-accent) 18%, var(--rs-surface))', fg: 'var(--rs-accent)' };
   return { bg: 'var(--rs-surface-2)', fg: 'var(--rs-ink)' };
 }
 
-function buildJobTokenSlip(job: RepairJob, shopHint = 'RetailSarathi') {
-  const lines = [
-    '=== REPAIR TOKEN ===',
-    shopHint,
-    `Token: ${job.jobNumber}`,
-    `Date: ${job.receivedAt ? new Date(job.receivedAt).toLocaleString('en-IN') : new Date().toLocaleString('en-IN')}`,
-    '--------------------',
-    `Customer: ${job.customer?.name ?? '—'}`,
-    `Phone: ${job.customer?.phone ?? '—'}`,
-    `Device: ${job.deviceModel}`,
-    job.imei ? `IMEI: ${job.imei}` : '',
-    job.accessories ? `Accessories: ${job.accessories}` : '',
-    `Issue: ${job.issue}`,
-    `Status: ${job.status}`,
-    job.estimateAmount != null ? `Estimate: Rs ${num(job.estimateAmount).toFixed(2)}` : '',
-    `Warranty: ${job.warrantyDays ?? 30} days after delivery`,
-    '--------------------',
-    'Keep this token slip.',
-    'Show at counter for status / pickup.',
-    '====================',
-    '',
-  ].filter(Boolean);
-  return lines.join('\n');
-}
 
 export function RepairsPanel({
   token,
@@ -266,15 +219,9 @@ export function RepairsPanel({
         estimateAmount: '',
         warrantyDays: '30',
       });
-      setMsg(`Token ${created.jobNumber} created`);
+      setMsg(`Token ${created.jobNumber} created — use "Print token" to print the slip.`);
       await loadJobs();
       await openDetail(created.id);
-      // Auto-print token slip
-      await window.retailSarathi.printThermal({
-        text: buildJobTokenSlip(created),
-        comPort: printOpts?.comPort,
-        bluetoothAddress: printOpts?.bluetoothAddress,
-      });
     } catch (err) {
       setMsg(err instanceof Error ? err.message : 'Create failed');
     } finally {
@@ -285,8 +232,9 @@ export function RepairsPanel({
   async function printToken(job: RepairJob) {
     setBusy(true);
     try {
+      const { escposBase64 } = await apiFetch<{ text: string; escposBase64: string }>(token, `/repairs/${job.id}/token-thermal`);
       await window.retailSarathi.printThermal({
-        text: buildJobTokenSlip(job),
+        escposBase64,
         comPort: printOpts?.comPort,
         bluetoothAddress: printOpts?.bluetoothAddress,
       });

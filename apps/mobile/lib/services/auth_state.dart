@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config/api_config.dart';
@@ -9,11 +10,21 @@ import 'api_client.dart';
 class AuthState extends ChangeNotifier {
   AuthState();
 
+  // Keychain (iOS) / Keystore-backed EncryptedSharedPreferences (Android) — the JWT is a live
+  // credential and shouldn't sit in plain SharedPreferences XML on disk.
+  static const _secureStorage = FlutterSecureStorage(
+    aOptions: AndroidOptions(encryptedSharedPreferences: true),
+  );
+  static const _tokenKey = 'token';
+
   late ApiClient api;
   String? token;
   UserProfile? user;
   bool ready = false;
   String? error;
+
+  bool get isOwner => user?.role == 'OWNER';
+  bool get isOwnerOrManager => user?.role == 'OWNER' || user?.role == 'MANAGER';
 
   Future<void> bootstrap() async {
     final prefs = await SharedPreferences.getInstance();
@@ -23,7 +34,15 @@ class AuthState extends ChangeNotifier {
         ? savedBase
         : ApiConfig.defaultBaseUrl(isAndroid: isAndroid);
 
-    token = prefs.getString('token');
+    // One-time migration: earlier builds stored the token in plain SharedPreferences.
+    token = await _secureStorage.read(key: _tokenKey);
+    final legacyToken = prefs.getString('token');
+    if ((token == null || token!.isEmpty) && legacyToken != null && legacyToken.isNotEmpty) {
+      token = legacyToken;
+      await _secureStorage.write(key: _tokenKey, value: legacyToken);
+    }
+    if (legacyToken != null) await prefs.remove('token');
+
     api = ApiClient(baseUrl: base, token: token);
 
     if (token != null && token!.isNotEmpty) {
@@ -38,7 +57,7 @@ class AuthState extends ChangeNotifier {
         token = null;
         user = null;
         api.token = null;
-        await prefs.remove('token');
+        await _secureStorage.delete(key: _tokenKey);
       }
     }
     ready = true;
@@ -85,8 +104,7 @@ class AuthState extends ChangeNotifier {
         throw ApiException('No access token returned');
       }
       api.token = token;
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('token', token!);
+      await _secureStorage.write(key: _tokenKey, value: token!);
 
       final userJson = raw['user'];
       if (userJson is Map<String, dynamic>) {
@@ -109,8 +127,7 @@ class AuthState extends ChangeNotifier {
     token = null;
     user = null;
     api.token = null;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('token');
+    await _secureStorage.delete(key: _tokenKey);
     await BrandingPrefsController.instance.patch(ownerName: '', shopName: '');
     notifyListeners();
   }

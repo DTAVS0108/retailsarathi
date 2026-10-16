@@ -2,12 +2,13 @@ import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@ne
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { CustomersService } from './customers.service';
 import { CreateCustomerDto, UpdateCustomerDto } from './dto/customer.dto';
-import { CurrentUser, JwtPayload } from '../common/decorators';
+import { CurrentUser, JwtPayload, Roles } from '../common/decorators';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RolesGuard } from '../common/roles.guard';
 
 @ApiTags('customers')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('customers')
 export class CustomersController {
   constructor(private customers: CustomersService) {}
@@ -46,6 +47,7 @@ export class CustomersController {
   }
 
   @Post('payments/:paymentId/void')
+  @Roles('OWNER', 'MANAGER')
   voidPayment(
     @CurrentUser() user: JwtPayload,
     @Param('paymentId') paymentId: string,
@@ -69,22 +71,36 @@ export class CustomersController {
     return this.customers.getOpenCreditInvoices(user.tenantId, id);
   }
 
+  @Get(':id/repairs')
+  repairs(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
+    return this.customers.getRepairHistory(user.tenantId, id);
+  }
+
+  @Get(':id/devices')
+  devices(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
+    return this.customers.getDevices(user.tenantId, id);
+  }
+
   @Post(':id/reminders')
+  @Roles('OWNER', 'MANAGER', 'CASHIER')
   remind(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
     return this.customers.logCustomerReminder(user.tenantId, id, user.sub);
   }
 
   @Post(':id/whatsapp-statement')
+  @Roles('OWNER', 'MANAGER', 'CASHIER')
   whatsappStatement(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
     return this.customers.whatsappStatement(user.tenantId, id);
   }
 
   @Post()
+  @Roles('OWNER', 'MANAGER', 'CASHIER')
   create(@CurrentUser() user: JwtPayload, @Body() dto: CreateCustomerDto) {
     return this.customers.create(user.tenantId, dto, user.sub);
   }
 
   @Patch(':id')
+  @Roles('OWNER', 'MANAGER', 'CASHIER')
   update(
     @CurrentUser() user: JwtPayload,
     @Param('id') id: string,
@@ -94,6 +110,7 @@ export class CustomersController {
   }
 
   @Post(':id/loyalty/redeem')
+  @Roles('OWNER', 'MANAGER', 'CASHIER')
   redeemLoyalty(
     @CurrentUser() user: JwtPayload,
     @Param('id') id: string,
@@ -103,6 +120,7 @@ export class CustomersController {
   }
 
   @Post(':id/collect')
+  @Roles('OWNER', 'MANAGER', 'CASHIER')
   collect(
     @CurrentUser() user: JwtPayload,
     @Param('id') id: string,

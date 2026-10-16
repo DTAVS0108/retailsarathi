@@ -14,6 +14,8 @@ type ProductRow = {
   lowStockThreshold?: number | string;
   trackSerial?: boolean;
   trackBatch?: boolean;
+  parentProductId?: string | null;
+  parentProduct?: { id: string; name: string } | null;
   mrp?: number | string | null;
   category?: string | null;
   brand?: string | null;
@@ -85,6 +87,19 @@ type ProductDetail = ProductRow & {
     times: number;
     qty: number;
   }>;
+  batches?: Array<{
+    id: string;
+    batchNumber: string;
+    expiryDate?: string | null;
+    quantity: number | string;
+  }>;
+  variants?: Array<{
+    id: string;
+    name: string;
+    sku: string;
+    variantLabel?: string | null;
+    stockQty: number | string;
+  }>;
 };
 
 type Facets = {
@@ -117,6 +132,9 @@ type FormState = {
   brand: string;
   model: string;
   trackSerial: boolean;
+  trackBatch: boolean;
+  variantLabel: string;
+  parentProductId: string;
 };
 
 const EMPTY: FormState = {
@@ -133,6 +151,9 @@ const EMPTY: FormState = {
   brand: '',
   model: '',
   trackSerial: false,
+  trackBatch: false,
+  variantLabel: '',
+  parentProductId: '',
 };
 
 function num(v: number | string | null | undefined) {
@@ -155,6 +176,9 @@ function rowToForm(p: ProductRow): FormState {
     brand: p.brand ?? '',
     model: p.model ?? '',
     trackSerial: Boolean(p.trackSerial),
+    trackBatch: Boolean(p.trackBatch),
+    variantLabel: p.variantLabel ?? '',
+    parentProductId: p.parentProductId ?? '',
   };
 }
 
@@ -308,6 +332,7 @@ function ProductDetailBody({ detail }: { detail: ProductDetail }) {
         <Chip>{num(detail.gstRate)}% GST</Chip>
         {detail.category ? <Chip>{detail.category}</Chip> : null}
         {detail.trackSerial ? <Chip tone="warn">IMEI tracked</Chip> : null}
+        {detail.trackBatch ? <Chip tone="warn">Batch tracked</Chip> : null}
         {detail.needsEnrichment ? <Chip tone="warn">Needs details</Chip> : null}
       </div>
 
@@ -389,6 +414,61 @@ function ProductDetailBody({ detail }: { detail: ProductDetail }) {
               ) : null}
             </ul>
           )}
+        </section>
+      ) : null}
+
+      {detail.trackBatch ? (
+        <section className="rounded-xl border px-3.5 py-3" style={{ borderColor: 'var(--rs-border)' }}>
+          <h4 className="mb-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--rs-muted)' }}>
+            Batches · {(detail.batches ?? []).reduce((s, b) => s + num(b.quantity), 0)} units across{' '}
+            {(detail.batches ?? []).length} batch{(detail.batches ?? []).length === 1 ? '' : 'es'}
+          </h4>
+          {!(detail.batches ?? []).length ? (
+            <p className="text-xs" style={{ color: 'var(--rs-muted)' }}>
+              No batches on file yet — add one from the web app's product detail page.
+            </p>
+          ) : (
+            <ul className="max-h-40 space-y-1 overflow-auto text-xs">
+              {(detail.batches ?? []).map((b) => (
+                <li
+                  key={b.id}
+                  className="flex justify-between gap-2 rounded-lg px-2 py-1.5"
+                  style={{ background: 'var(--rs-surface-2)' }}
+                >
+                  <span className="font-mono">{b.batchNumber}</span>
+                  <span style={{ color: 'var(--rs-muted)' }}>
+                    {b.expiryDate ? `Exp ${new Date(b.expiryDate).toLocaleDateString('en-IN')}` : 'No expiry'} ·{' '}
+                    <span className="font-semibold" style={{ color: 'var(--rs-ink)' }}>
+                      {num(b.quantity)} units
+                    </span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      ) : null}
+
+      {detail.variants?.length ? (
+        <section className="rounded-xl border px-3.5 py-3" style={{ borderColor: 'var(--rs-border)' }}>
+          <h4 className="mb-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--rs-muted)' }}>
+            Variants · {detail.variants.length}
+          </h4>
+          <ul className="space-y-1 text-xs">
+            {detail.variants.map((v) => (
+              <li
+                key={v.id}
+                className="flex justify-between gap-2 rounded-lg px-2 py-1.5"
+                style={{ background: 'var(--rs-surface-2)' }}
+              >
+                <span>
+                  <span className="font-medium" style={{ color: 'var(--rs-ink)' }}>{v.variantLabel || v.name}</span>{' '}
+                  <span className="font-mono" style={{ color: 'var(--rs-muted)' }}>{v.sku}</span>
+                </span>
+                <span style={{ color: 'var(--rs-muted)' }}>{num(v.stockQty)} units</span>
+              </li>
+            ))}
+          </ul>
         </section>
       ) : null}
 
@@ -522,13 +602,44 @@ function ProductFormFields({
   categoryOptions,
   showSku,
   showStock,
+  productOptions = [],
+  excludeProductId,
 }: {
   value: FormState;
   onChange: (patch: Partial<FormState>) => void;
   categoryOptions: string[];
   showSku?: boolean;
   showStock?: boolean;
+  /** Already-loaded catalog rows — the parent-product picker filters this client-side rather than
+      hitting a new search endpoint. */
+  productOptions?: ProductRow[];
+  /** The product currently being edited, so it can't be picked as its own parent. */
+  excludeProductId?: string;
 }) {
+  const [parentQuery, setParentQuery] = useState('');
+  const [parentOpen, setParentOpen] = useState(false);
+  const parentWrapRef = useRef<HTMLDivElement>(null);
+  const selectedParent = productOptions.find((p) => p.id === value.parentProductId);
+  const parentMatches =
+    parentQuery.trim().length >= 1
+      ? productOptions
+          .filter((p) => p.id !== excludeProductId)
+          .filter(
+            (p) =>
+              p.name.toLowerCase().includes(parentQuery.trim().toLowerCase()) ||
+              p.sku.toLowerCase().includes(parentQuery.trim().toLowerCase()),
+          )
+          .slice(0, 8)
+      : [];
+
+  useEffect(() => {
+    function onDoc(e: MouseEvent) {
+      if (parentWrapRef.current && !parentWrapRef.current.contains(e.target as Node)) setParentOpen(false);
+    }
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, []);
+
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
       {showSku ? (
@@ -651,6 +762,74 @@ function ProductFormFields({
         />
         Track IMEI / serial
       </label>
+      <label className="flex items-center gap-2 self-end pb-2 text-sm" style={{ color: 'var(--rs-ink)' }}>
+        <input
+          type="checkbox"
+          checked={value.trackBatch}
+          onChange={(e) => onChange({ trackBatch: e.target.checked })}
+        />
+        Track batch / expiry
+      </label>
+      <label className="space-y-1 text-xs font-medium sm:col-span-2" style={{ color: 'var(--rs-muted)' }}>
+        <span>Variant label (optional)</span>
+        <input
+          className="rs-input w-full text-sm"
+          placeholder="e.g. 128GB Black"
+          value={value.variantLabel}
+          onChange={(e) => onChange({ variantLabel: e.target.value })}
+        />
+      </label>
+      <div ref={parentWrapRef} className="relative space-y-1 text-xs font-medium sm:col-span-2" style={{ color: 'var(--rs-muted)' }}>
+        <span>Parent product (optional, for variants)</span>
+        <div className="flex items-center gap-2">
+          <input
+            className="rs-input w-full text-sm"
+            placeholder="Search product name or SKU…"
+            value={parentQuery || (selectedParent ? `${selectedParent.name} (${selectedParent.sku})` : '')}
+            onChange={(e) => {
+              setParentQuery(e.target.value);
+              setParentOpen(true);
+              if (value.parentProductId) onChange({ parentProductId: '' });
+            }}
+            onFocus={() => setParentOpen(true)}
+          />
+          {value.parentProductId ? (
+            <button
+              type="button"
+              className="shrink-0 text-xs font-semibold"
+              style={{ color: 'var(--rs-muted)' }}
+              onClick={() => {
+                onChange({ parentProductId: '' });
+                setParentQuery('');
+              }}
+            >
+              Clear
+            </button>
+          ) : null}
+        </div>
+        {parentOpen && parentMatches.length > 0 ? (
+          <div
+            className="absolute left-0 right-0 top-full z-20 mt-1 max-h-56 overflow-y-auto rounded-xl border py-1 shadow-lg"
+            style={{ borderColor: 'var(--rs-border)', background: 'var(--rs-surface)' }}
+          >
+            {parentMatches.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                className="block w-full px-3 py-2 text-left text-sm hover:opacity-80"
+                style={{ color: 'var(--rs-ink)' }}
+                onClick={() => {
+                  onChange({ parentProductId: p.id });
+                  setParentQuery('');
+                  setParentOpen(false);
+                }}
+              >
+                {p.name} · <span style={{ color: 'var(--rs-muted)' }}>{p.sku}</span>
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -807,8 +986,12 @@ export function ProductsPanel({
       setDetailLoading(true);
       setDetail(null);
       try {
-        const d = await apiFetch<ProductDetail>(token, `/products/${id}`);
-        setDetail(d);
+        const [d, batches, variants] = await Promise.all([
+          apiFetch<ProductDetail>(token, `/products/${id}`),
+          apiFetch<ProductDetail['batches']>(token, `/products/${id}/batches`).catch(() => []),
+          apiFetch<ProductDetail['variants']>(token, `/products/${id}/variants`).catch(() => []),
+        ]);
+        setDetail({ ...d, batches, variants });
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Failed to load product');
         setDetailId(null);
@@ -922,6 +1105,9 @@ export function ProductsPanel({
           brand: form.brand.trim() || undefined,
           model: form.model.trim() || undefined,
           trackSerial: form.trackSerial,
+          trackBatch: form.trackBatch,
+          variantLabel: form.variantLabel.trim() || undefined,
+          parentProductId: form.parentProductId.trim() || undefined,
         }),
       });
       setForm(EMPTY);
@@ -960,6 +1146,9 @@ export function ProductsPanel({
           brand: edit.brand.trim() || null,
           model: edit.model.trim() || null,
           trackSerial: edit.trackSerial,
+          trackBatch: edit.trackBatch,
+          variantLabel: edit.variantLabel.trim() || null,
+          parentProductId: edit.parentProductId.trim() || null,
         }),
       });
       closeProductForm();
@@ -1542,6 +1731,8 @@ export function ProductsPanel({
                   categoryOptions={categorySuggestions}
                   showSku={showCreate}
                   showStock={showCreate}
+                  productOptions={items}
+                  excludeProductId={showCreate ? undefined : editId ?? undefined}
                 />
               </div>
               <div

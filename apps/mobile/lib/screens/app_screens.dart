@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -29,8 +30,10 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final email = TextEditingController(text: 'owner@demo.retailsarathi.in');
-  final password = TextEditingController(text: 'Demo@123');
+  // Demo-fill convenience only in debug builds — never ships a real-looking credential
+  // pre-typed into a release build's login screen.
+  final email = TextEditingController(text: kDebugMode ? 'owner@demo.retailsarathi.in' : '');
+  final password = TextEditingController(text: kDebugMode ? 'Demo@123' : '');
   final apiUrl = TextEditingController();
   bool busy = false;
   String? error;

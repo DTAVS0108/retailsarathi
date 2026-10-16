@@ -17,6 +17,7 @@ import {
   tableHeaderClassName,
   toNumber,
 } from '../_components/dashboard-ui';
+import { RowActionsMenu } from '../_components/row-actions-menu';
 
 const API_ORIGIN = process.env.NEXT_PUBLIC_API_ORIGIN ?? 'http://localhost:4000';
 
@@ -541,22 +542,13 @@ export default function BankReconcilePage() {
                         )}
                       </td>
                       <td className={tableCellClassName}>
-                        <div className="flex flex-wrap gap-1.5">
-                          <Button
-                            type="button"
-                            disabled={busy}
-                            onClick={() => void matchStatement(row.id)}
-                          >
-                            Match
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            disabled={busy}
-                            onClick={() => void ignoreStatement(row.id)}
-                          >
-                            Ignore
-                          </Button>
+                        <div className="flex justify-end">
+                          <RowActionsMenu
+                            actions={[
+                              { key: 'match', label: 'Match', disabled: busy, onClick: () => void matchStatement(row.id) },
+                              { key: 'ignore', label: 'Ignore', tone: 'danger', disabled: busy, onClick: () => void ignoreStatement(row.id) },
+                            ]}
+                          />
                         </div>
                       </td>
                     </tr>

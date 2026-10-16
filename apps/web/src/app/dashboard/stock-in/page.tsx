@@ -99,6 +99,10 @@ interface PurchaseLine {
   trackSerial?: boolean;
   catalogTracksSerial?: boolean;
   serialNumbers?: string;
+  trackBatch?: boolean;
+  catalogTracksBatch?: boolean;
+  batchNumber?: string;
+  expiryDate?: string;
   commitStock?: boolean;
   lineStatus?: string;
   selected?: boolean;
@@ -112,6 +116,7 @@ interface PurchasePreview {
   gstin?: string;
   phone?: string;
   customerName?: string;
+  customerAddress?: string;
   customerGstin?: string;
   stateName?: string;
   placeOfSupply?: string;
@@ -303,6 +308,7 @@ export default function StockInPage() {
   const [supplierAddress, setSupplierAddress] = useState('');
   const [supplierPhone, setSupplierPhone] = useState('');
   const [customerName, setCustomerName] = useState('');
+  const [customerAddress, setCustomerAddress] = useState('');
   const [customerGstin, setCustomerGstin] = useState('');
   const [taxableValue, setTaxableValue] = useState('');
   const [taxAmount, setTaxAmount] = useState('');
@@ -322,14 +328,16 @@ export default function StockInPage() {
   const [stateName, setStateName] = useState('');
   const [hsnTaxSummary, setHsnTaxSummary] = useState<PurchasePreview['hsnTaxSummary']>([]);
   const [lines, setLines] = useState<PurchaseLine[]>([]);
-  const [expandedLine, setExpandedLine] = useState<number | null>(0);
+  // Items are expanded by default (absence from this set = expanded); track only the ones a
+  // user has explicitly collapsed, so freshly parsed/added items always start open.
+  const [collapsedLines, setCollapsedLines] = useState<Set<number>>(new Set());
   const [extractedJson, setExtractedJson] = useState<Record<string, unknown> | null>(null);
   const [jsonText, setJsonText] = useState('');
   const [dataView, setDataView] = useState<'text' | 'json'>('text');
   const [jsonError, setJsonError] = useState('');
   const [productQuery, setProductQuery] = useState<Record<number, string>>({});
   const [productHits, setProductHits] = useState<
-    Record<number, Array<{ id: string; sku: string; name: string; barcode: string | null; trackSerial: boolean; salePrice: number }>>
+    Record<number, Array<{ id: string; sku: string; name: string; barcode: string | null; trackSerial: boolean; trackBatch?: boolean; salePrice: number }>>
   >({});
   const [serialDraft, setSerialDraft] = useState<Record<number, string>>({});
   const [barcodeBusy, setBarcodeBusy] = useState<Record<number, boolean>>({});
@@ -495,6 +503,7 @@ export default function StockInPage() {
     const nextInvoiceDate = normalizeAppDate(preview.invoiceDate || '');
     const nextGstin = preview.gstin || '';
     const nextCustomerName = preview.customerName || '';
+    const nextCustomerAddress = preview.customerAddress || '';
     const nextCustomerGstin = preview.customerGstin || '';
     const nextStateName = preview.stateName || '';
     const nextPlaceOfSupply = preview.placeOfSupply || '';
@@ -527,6 +536,10 @@ export default function StockInPage() {
           serialNumbers: lineSerialText(line.serialNumbers),
           trackSerial: Boolean(line.trackSerial),
           catalogTracksSerial: Boolean(line.catalogTracksSerial ?? line.trackSerial),
+          trackBatch: Boolean(line.trackBatch),
+          catalogTracksBatch: Boolean(line.catalogTracksBatch ?? line.trackBatch),
+          batchNumber: line.batchNumber ?? '',
+          expiryDate: line.expiryDate ?? '',
         };
       }
       return {
@@ -541,6 +554,12 @@ export default function StockInPage() {
         // Don't auto-enable — confirm requires serials when true
         trackSerial: false,
         catalogTracksSerial: Boolean(line.trackSerial),
+        // Same as serials: fresh parse never auto-enables batch tracking, only records whether the
+        // matched catalog product itself tracks batches (so the user knows to opt in).
+        trackBatch: false,
+        catalogTracksBatch: Boolean(line.trackBatch),
+        batchNumber: '',
+        expiryDate: '',
       };
     });
 
@@ -551,6 +570,7 @@ export default function StockInPage() {
     setInvoiceDate(nextInvoiceDate);
     setGstin(nextGstin);
     setCustomerName(nextCustomerName);
+    setCustomerAddress(nextCustomerAddress);
     setCustomerGstin(nextCustomerGstin);
     setStateName(nextStateName);
     setPlaceOfSupply(nextPlaceOfSupply);
@@ -571,7 +591,7 @@ export default function StockInPage() {
     setTotalAmount(nextTotalAmount);
     setHsnTaxSummary(nextHsnTaxSummary);
     setLines(nextLines);
-    setExpandedLine(nextLines.length ? 0 : null);
+    setCollapsedLines(new Set());
     setShowMoreInvoice(
       Boolean(
         nextEwayBillNo ||
@@ -612,6 +632,7 @@ export default function StockInPage() {
       taxAmount: nextTaxAmount,
       hsnTaxSummary: nextHsnTaxSummary,
       customerName: nextCustomerName,
+      customerAddress: nextCustomerAddress,
       customerGstin: nextCustomerGstin,
       lines: nextLines,
     });
@@ -686,6 +707,7 @@ export default function StockInPage() {
     taxAmount: string;
     hsnTaxSummary: NonNullable<PurchasePreview['hsnTaxSummary']>;
     customerName: string;
+    customerAddress: string;
     customerGstin: string;
     lines: PurchaseLine[];
   }): Record<string, unknown> {
@@ -720,6 +742,7 @@ export default function StockInPage() {
       },
       customer: {
         name: input.customerName || null,
+        address: input.customerAddress || null,
         gstin: input.customerGstin || null,
       },
       items: input.lines.map((l) => ({
@@ -762,6 +785,7 @@ export default function StockInPage() {
       taxAmount,
       hsnTaxSummary: hsnTaxSummary || [],
       customerName,
+      customerAddress,
       customerGstin,
       lines,
     });
@@ -818,6 +842,7 @@ export default function StockInPage() {
       if (invoice?.igstAmount != null) setIgstAmount(String(invoice.igstAmount));
 
       if (customer?.name != null) setCustomerName(String(customer.name || ''));
+      if (customer?.address != null) setCustomerAddress(String(customer.address || ''));
       if (customer?.gstin != null) setCustomerGstin(String(customer.gstin || '').toUpperCase());
 
       if (Array.isArray(items) && items.length) {
@@ -852,7 +877,7 @@ export default function StockInPage() {
             } satisfies PurchaseLine;
           }),
         );
-        setExpandedLine(0);
+        setCollapsedLines(new Set());
         setShowUploadDialog(false);
       }
 
@@ -905,10 +930,18 @@ export default function StockInPage() {
       setError('');
       if (!append) setSuccess('');
       let extractedText = '';
-      if (isImageFile(file)) {
+      if (isImageFile(file) && append) {
+        // Adding a page to a multi-page invoice needs this page's text merged into the
+        // running `text` state client-side — the server only ever sees one file per
+        // request, so it has no way to do that merge itself.
         setOcrRunning(true);
         extractedText = await runInvoiceOcr(file);
         setOcrRunning(false);
+      } else if (isImageFile(file)) {
+        // First/only page: skip the client-side OCR pass and let the server's own OCR
+        // (extractText() in scan.service.ts) handle it — this upload already requires the
+        // server to be reachable, so there's no offline benefit to also running the slower
+        // browser Tesseract.js pass here, and doing both used to double the wait to 2+ minutes.
       } else if (isPdfFile(file)) {
         setOcrRunning(true);
         extractedText = await extractPdfText(file);
@@ -1032,18 +1065,29 @@ export default function StockInPage() {
           lineStatus: 'NEEDS_ENRICH',
         },
       ];
-      setExpandedLine(next.length - 1);
+      // New item is open by default — it's simply absent from collapsedLines, no action needed.
+      return next;
+    });
+  }
+
+  function toggleLineExpanded(index: number) {
+    setCollapsedLines((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
       return next;
     });
   }
 
   function removeItem(index: number) {
     setLines((current) => current.filter((_, i) => i !== index));
-    setExpandedLine((cur) => {
-      if (cur == null) return null;
-      if (cur === index) return null;
-      if (cur > index) return cur - 1;
-      return cur;
+    setCollapsedLines((prev) => {
+      const next = new Set<number>();
+      for (const i of prev) {
+        if (i === index) continue;
+        next.add(i > index ? i - 1 : i);
+      }
+      return next;
     });
     setProductDialogLine((cur) => {
       if (cur == null) return null;
@@ -1066,7 +1110,7 @@ export default function StockInPage() {
     setError('');
     setSuccess('Manual receive started — fill supplier, scan barcode or enter SN, then confirm.');
     if (lines.length === 0) addBlankItem();
-    else setExpandedLine(0);
+    else setCollapsedLines(new Set());
   }
 
   async function loadSupplierDetail(id: string) {
@@ -1190,7 +1234,7 @@ export default function StockInPage() {
     setError('');
     try {
       const hits = await apiWithAuth<
-        Array<{ id: string; sku: string; name: string; barcode: string | null; trackSerial: boolean; salePrice: number }>
+        Array<{ id: string; sku: string; name: string; barcode: string | null; trackSerial: boolean; trackBatch?: boolean; salePrice: number }>
       >(`/scan/products/search?q=${encodeURIComponent(barcode)}`);
       const exact =
         hits.find((p) => (p.barcode || '').toLowerCase() === barcode.toLowerCase()) ||
@@ -1207,6 +1251,7 @@ export default function StockInPage() {
           name: string;
           barcode: string | null;
           trackSerial: boolean;
+          trackBatch?: boolean;
           salePrice: number | string;
         }>(`/products/barcode/${encodeURIComponent(barcode)}`);
         linkProduct(index, {
@@ -1215,6 +1260,7 @@ export default function StockInPage() {
           name: p.name,
           barcode: p.barcode,
           trackSerial: p.trackSerial,
+          trackBatch: p.trackBatch,
           salePrice: toNumber(p.salePrice),
         });
         setSuccess(`Linked “${p.name}” from barcode.`);
@@ -1267,6 +1313,7 @@ export default function StockInPage() {
         gstRate: line.gstRate ?? 18,
         stockQty: line.currentStock ?? 0,
         trackSerial: Boolean(line.trackSerial || line.catalogTracksSerial),
+        trackBatch: Boolean(line.trackBatch || line.catalogTracksBatch),
       };
     }
     return {
@@ -1282,6 +1329,7 @@ export default function StockInPage() {
       gstRate: line.gstRate ?? 18,
       stockQty: 0,
       trackSerial: Boolean(line.trackSerial),
+      trackBatch: Boolean(line.trackBatch),
     };
   }
 
@@ -1316,6 +1364,9 @@ export default function StockInPage() {
           createIfMissing: l.createIfMissing !== false,
           trackSerial: Boolean(l.trackSerial),
           serialNumbers: serials.length ? serials : undefined,
+          trackBatch: Boolean(l.trackBatch),
+          batchNumber: l.trackBatch ? l.batchNumber?.trim() || undefined : undefined,
+          expiryDate: l.trackBatch ? l.expiryDate || undefined : undefined,
           commitStock: l.commitStock !== false,
         };
       });
@@ -1390,6 +1441,7 @@ export default function StockInPage() {
           placeOfSupply: placeOfSupply || undefined,
           stateName: stateName || undefined,
           customerName: customerName || undefined,
+          customerAddress: customerAddress || undefined,
           customerGstin: customerGstin || undefined,
           notes: notes.trim() || undefined,
           appendToExistingBill: appendToExistingBill || undefined,
@@ -1420,7 +1472,7 @@ export default function StockInPage() {
         }${result.supplier ? ` · Saved in Suppliers.` : ''}`,
       );
       setLines([]);
-      setExpandedLine(null);
+      setCollapsedLines(new Set());
       setDraftId(undefined);
     } catch (err) {
       setError(parseError(err));
@@ -1453,6 +1505,7 @@ export default function StockInPage() {
             gstin,
             notes,
             customerName,
+            customerAddress,
             customerGstin,
             stateName,
             placeOfSupply,
@@ -1497,7 +1550,7 @@ export default function StockInPage() {
     }
     try {
       const hits = await apiWithAuth<
-        Array<{ id: string; sku: string; name: string; barcode: string | null; trackSerial: boolean; salePrice: number }>
+        Array<{ id: string; sku: string; name: string; barcode: string | null; trackSerial: boolean; trackBatch?: boolean; salePrice: number }>
       >(`/scan/products/search?q=${encodeURIComponent(q.trim())}`);
       setProductHits((prev) => ({ ...prev, [index]: hits }));
     } catch {
@@ -1507,7 +1560,7 @@ export default function StockInPage() {
 
   function linkProduct(
     index: number,
-    p: { id: string; sku: string; name: string; barcode: string | null; trackSerial: boolean; salePrice: number },
+    p: { id: string; sku: string; name: string; barcode: string | null; trackSerial: boolean; trackBatch?: boolean; salePrice: number },
   ) {
     updateLine(index, {
       productId: p.id,
@@ -1515,6 +1568,8 @@ export default function StockInPage() {
       matchedName: p.name,
       barcode: p.barcode || undefined,
       trackSerial: p.trackSerial,
+      trackBatch: Boolean(p.trackBatch),
+      catalogTracksBatch: Boolean(p.trackBatch),
       salePrice: Number(p.salePrice),
       createIfMissing: false,
       matchScore: 100,
@@ -1776,6 +1831,10 @@ export default function StockInPage() {
                           <input className={inputClassName} value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
                         </label>
                         <label className="space-y-1 text-sm font-medium text-slate-700">
+                          <span>Buyer address</span>
+                          <input className={inputClassName} value={customerAddress} onChange={(e) => setCustomerAddress(e.target.value)} />
+                        </label>
+                        <label className="space-y-1 text-sm font-medium text-slate-700">
                           <span>Buyer GSTIN</span>
                           <input
                             className={inputClassName}
@@ -1879,7 +1938,7 @@ export default function StockInPage() {
                 </p>
                 {lines.map((line, index) => {
                   const badge = statusBadge(line);
-                  const open = expandedLine === index;
+                  const open = !collapsedLines.has(index);
                   const lineTotal = toNumber(line.quantity) * toNumber(line.unitPrice);
                   const snCount = parseSerialList(line.serialNumbers || '').length;
                   const snNeed = Math.round(toNumber(line.quantity));
@@ -1901,7 +1960,7 @@ export default function StockInPage() {
                         <button
                           type="button"
                           className="min-w-0 flex-1 text-left"
-                          onClick={() => setExpandedLine(open ? null : index)}
+                          onClick={() => toggleLineExpanded(index)}
                         >
                           <span className="block font-semibold text-slate-900">
                             {line.name?.trim() || `Item ${index + 1}`}
@@ -1945,7 +2004,7 @@ export default function StockInPage() {
                         <button
                           type="button"
                           className="mt-1 shrink-0 px-1 text-slate-400"
-                          onClick={() => setExpandedLine(open ? null : index)}
+                          onClick={() => toggleLineExpanded(index)}
                           aria-label={open ? 'Collapse' : 'Expand'}
                         >
                           {open ? '▾' : '▸'}
@@ -2163,6 +2222,34 @@ export default function StockInPage() {
                             />
                           </div>
                         ) : null}
+                        <label className="flex items-center gap-2 text-sm font-medium text-slate-700 sm:col-span-2 lg:col-span-3">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(line.trackBatch)}
+                            onChange={(e) => updateLine(index, { trackBatch: e.target.checked })}
+                          />
+                          Track batch / expiry
+                          {line.catalogTracksBatch ? (
+                            <span className="font-normal text-amber-700">— catalog uses batches</span>
+                          ) : null}
+                          <span className="font-normal text-slate-400">(off by default; stock-in works without a batch)</span>
+                        </label>
+                        {line.trackBatch ? (
+                          <div className="grid grid-cols-2 gap-2 sm:col-span-2 lg:col-span-3">
+                            <input
+                              className={inputClassName}
+                              placeholder="Batch number"
+                              value={line.batchNumber || ''}
+                              onChange={(e) => updateLine(index, { batchNumber: e.target.value })}
+                            />
+                            <input
+                              type="date"
+                              className={inputClassName}
+                              value={line.expiryDate || ''}
+                              onChange={(e) => updateLine(index, { expiryDate: e.target.value })}
+                            />
+                          </div>
+                        ) : null}
                         <div className="flex flex-wrap gap-2 sm:col-span-2 lg:col-span-3">
                           <Button
                             type="button"
@@ -2288,7 +2375,7 @@ export default function StockInPage() {
               ) : null}
 
               <UploadDropzone
-                accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.bmp,.txt,.csv,.xlsx,.xls,image/*,application/pdf,text/plain,text/csv"
+                accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.bmp,.txt,.csv,.xlsx,.xls,.docx,image/*,application/pdf,text/plain,text/csv"
                 disabled={uploading || ocrRunning}
                 title={
                   ocrRunning
@@ -2299,7 +2386,7 @@ export default function StockInPage() {
                         ? 'Replace first page'
                         : 'Upload invoice (PDF / image / TXT / Excel)'
                 }
-                hint="PDF · PNG · JPG · WebP · GIF · TXT · CSV · XLSX"
+                hint="PDF · PNG · JPG · WebP · GIF · TXT · CSV · XLSX · DOCX"
                 onFile={(file) => void handleUpload(file, { append: false })}
               />
 
@@ -2307,7 +2394,7 @@ export default function StockInPage() {
                 ref={appendFileInputRef}
                 type="file"
                 className="hidden"
-                accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.bmp,.txt,.csv,.xlsx,.xls,image/*,application/pdf,text/plain,text/csv"
+                accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.bmp,.txt,.csv,.xlsx,.xls,.docx,image/*,application/pdf,text/plain,text/csv"
                 disabled={uploading || ocrRunning}
                 onChange={(event) => {
                   const file = event.target.files?.[0];

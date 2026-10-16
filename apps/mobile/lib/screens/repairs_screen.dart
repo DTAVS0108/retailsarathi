@@ -11,31 +11,17 @@ import '../theme/app_theme.dart';
 import '../widgets/app_loader.dart';
 import '../widgets/document_viewer.dart';
 import '../widgets/floating_calculator.dart';
+import '../widgets/app_toast.dart';
 import '../theme/app_ui.dart';
+import '../theme/appearance_prefs.dart';
+import '../services/bluetooth_thermal_printer.dart';
+import '../utils/repair_status_flow.dart';
 
 final _inr = NumberFormat.currency(locale: 'en_IN', symbol: '₹');
 final _day = DateFormat('dd MMM yyyy, HH:mm');
 
-const _statusFlow = <String, List<String>>{
-  'RECEIVED': ['DIAGNOSED', 'CANCELLED'],
-  'DIAGNOSED': ['AWAITING_PARTS', 'IN_REPAIR', 'CANCELLED'],
-  'AWAITING_PARTS': ['IN_REPAIR', 'CANCELLED'],
-  'IN_REPAIR': ['READY', 'CANCELLED'],
-  'READY': ['DELIVERED'],
-  'DELIVERED': [],
-  'CANCELLED': [],
-};
-
-const _statusFilters = [
-  '',
-  'RECEIVED',
-  'DIAGNOSED',
-  'AWAITING_PARTS',
-  'IN_REPAIR',
-  'READY',
-  'DELIVERED',
-  'CANCELLED',
-];
+const _statusFlow = repairStatusFlow;
+const _statusFilters = repairStatusFilters;
 
 String _statusLabel(String s) => s.replaceAll('_', ' ');
 
@@ -531,6 +517,40 @@ class _RepairDetailScreenState extends State<RepairDetailScreen> {
     }
   }
 
+  Future<void> _printToken() async {
+    final api = context.read<AuthState>().api;
+    setState(() {
+      busy = true;
+      error = null;
+      success = null;
+    });
+    try {
+      final result = await api.get('/repairs/${widget.jobId}/token-thermal');
+      final map = asStringKeyedMap(result);
+      final escpos = map['escposBase64']?.toString() ?? '';
+      final mac = AppearancePrefsController.instance.printerMac;
+      var printed = false;
+      if (escpos.isNotEmpty) {
+        printed = await BluetoothThermalPrinter.printEscPosBase64(escpos, mac: mac);
+        if (!printed) {
+          await BluetoothThermalPrinter.copyBase64Fallback(escpos);
+        }
+      }
+      if (!mounted) return;
+      setState(() {
+        busy = false;
+        success = printed ? 'Token slip printed' : 'Bluetooth printer unavailable — slip copied instead';
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        busy = false;
+        error = e.toString();
+      });
+      showErrorToast(context, e.toString());
+    }
+  }
+
   Future<void> _uploadPhoto(ImageSource source) async {
     final api = context.read<AuthState>().api;
     final shot = await picker.pickImage(source: source, imageQuality: 85);
@@ -621,6 +641,11 @@ class _RepairDetailScreenState extends State<RepairDetailScreen> {
       appBar: AppBar(
         title: Text(j?['jobNumber']?.toString() ?? 'Repair'),
         actions: [
+          IconButton(
+            onPressed: j == null || busy ? null : _printToken,
+            icon: Icon(Icons.print_rounded, color: colors.ink),
+            tooltip: 'Print token',
+          ),
           IconButton(
             onPressed: loading ? null : _load,
             icon: Icon(Icons.refresh_rounded, color: colors.ink),

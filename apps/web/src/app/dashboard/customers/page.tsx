@@ -29,6 +29,7 @@ import {
   tableHeaderClassName,
   toNumber,
 } from '../_components/dashboard-ui';
+import { RowActionsMenu } from '../_components/row-actions-menu';
 import { ExportDropdown, fetchAndApplyExport } from '../_components/export-dropdown';
 
 type Segment = 'RETAIL' | 'DEALER' | 'DISTRIBUTOR' | 'CORPORATE';
@@ -48,6 +49,7 @@ type ReceivablesRow = {
   outstanding: number;
   creditLimit?: number;
   advanceBalance?: number;
+  whatsappOptIn?: boolean;
 };
 
 interface Customer {
@@ -510,24 +512,24 @@ export default function CustomersPage() {
                       ) : null}
                     </td>
                     <td className={tableCellClassName}>
-                      <div className="flex flex-wrap gap-1.5">
-                        {row.customerId ? (
-                          <Link href={`/dashboard/customers/${row.customerId}`}>
-                            <Button type="button" variant="secondary">
-                              Collect
-                            </Button>
-                          </Link>
-                        ) : null}
-                        {row.customerId ? (
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            disabled={waReminding === row.customerId}
-                            onClick={() => void sendCustomerReminder(row.customerId!)}
-                          >
-                            {waReminding === row.customerId ? '…' : 'WA'}
-                          </Button>
-                        ) : null}
+                      <div className="flex justify-end">
+                        <RowActionsMenu
+                          actions={[
+                            {
+                              key: 'collect',
+                              label: 'Collect',
+                              hidden: !row.customerId,
+                              onClick: () => router.push(`/dashboard/customers/${row.customerId}`),
+                            },
+                            {
+                              key: 'wa',
+                              label: waReminding === row.customerId ? 'Sending…' : 'WhatsApp reminder',
+                              hidden: !row.customerId || !row.whatsappOptIn,
+                              disabled: waReminding === row.customerId,
+                              onClick: () => void sendCustomerReminder(row.customerId!),
+                            },
+                          ]}
+                        />
                       </div>
                     </td>
                   </tr>
@@ -1057,7 +1059,7 @@ export default function CustomersPage() {
                       <SortHeader field="loyaltyPoints" label="Loyalty" />
                       <SortHeader field="createdAt" label="Created at" />
                       <SortHeader field="updatedAt" label="Updated at" />
-                      <th className={cn(tableHeaderClassName, 'text-right')}>Open</th>
+                      <th className={cn(tableHeaderClassName, 'text-right')}>Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -1113,15 +1115,14 @@ export default function CustomersPage() {
                               {formatDateTime(customer.updatedAt || customer.createdAt)}
                             </p>
                           </td>
-                          <td className={cn(tableCellClassName, 'text-right')}>
-                            <Link
-                              href={`/dashboard/customers/${customer.id}`}
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <Button type="button" size="sm" variant="secondary">
-                                View
-                              </Button>
-                            </Link>
+                          <td className={cn(tableCellClassName, 'text-right')} onClick={(e) => e.stopPropagation()}>
+                            <div className="flex justify-end">
+                              <RowActionsMenu
+                                actions={[
+                                  { key: 'view', label: 'View', onClick: () => router.push(`/dashboard/customers/${customer.id}`) },
+                                ]}
+                              />
+                            </div>
                           </td>
                         </tr>
                       );

@@ -7,9 +7,34 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { buildThermalReceipt } from '../invoices/thermal.util';
 
+const MAC_ADDRESS_RE = /^([0-9A-F]{2}:){5}[0-9A-F]{2}$/i;
+const SERIAL_PORT_RE = /^(COM\d+|\/dev\/tty\S+)$/i;
+
 @Injectable()
 export class HardwareService {
   constructor(private prisma: PrismaService) {}
+
+  /**
+   * Format-checks device settings that would otherwise silently accept garbage — previously
+   * only Bluetooth MAC truthiness was checked (and only at print time, not at save time).
+   */
+  private validateSettings(deviceType: string, settings: Record<string, unknown>) {
+    if (deviceType === 'THERMAL_PRINTER') {
+      const transport = String(settings.port || settings.transport || '').toUpperCase();
+      if (transport === 'BLUETOOTH') {
+        const mac = String(settings.bluetoothAddress || '').trim();
+        if (!mac || !MAC_ADDRESS_RE.test(mac)) {
+          throw new BadRequestException('Bluetooth MAC address must look like AA:BB:CC:DD:EE:FF');
+        }
+      }
+    }
+    if (deviceType === 'WEIGHING_SCALE' || deviceType === 'CUSTOMER_DISPLAY') {
+      const port = String(settings.port || '').trim();
+      if (!port || !SERIAL_PORT_RE.test(port)) {
+        throw new BadRequestException('Port must look like COM3 (Windows) or /dev/ttyUSB0 (Linux/Mac)');
+      }
+    }
+  }
 
   async list(tenantId: string, branchId?: string) {
     return this.prisma.hardwareConfig.findMany({
@@ -57,6 +82,7 @@ export class HardwareService {
       ...(preset?.defaults ?? {}),
       ...(data.settings ?? {}),
     };
+    this.validateSettings(data.deviceType, settings);
 
     return this.prisma.hardwareConfig.create({
       data: {
@@ -75,10 +101,17 @@ export class HardwareService {
     id: string,
     data: { name?: string; settings?: Record<string, unknown>; isActive?: boolean },
   ) {
-    await this.ensure(tenantId, id);
+    const existing = await this.ensure(tenantId, id);
     const name = data.name !== undefined ? data.name.trim() : undefined;
     if (data.name !== undefined && !name) {
       throw new BadRequestException('Device name cannot be empty');
+    }
+    if (data.settings !== undefined) {
+      const currentSettings =
+        existing.settings && typeof existing.settings === 'object'
+          ? (existing.settings as Record<string, unknown>)
+          : {};
+      this.validateSettings(existing.deviceType, { ...currentSettings, ...data.settings });
     }
 
     return this.prisma.hardwareConfig.update({
@@ -257,9 +290,9 @@ export class HardwareService {
       paperWidthMm: paperWidth,
     });
 
-    if (transport === 'BLUETOOTH' && !bluetoothAddress) {
+    if (transport === 'BLUETOOTH' && (!bluetoothAddress || !MAC_ADDRESS_RE.test(bluetoothAddress))) {
       throw new BadRequestException(
-        'Bluetooth MAC missing — open Hardware, edit the thermal printer, set the MAC address, then retry.',
+        'Bluetooth MAC missing or malformed — open Hardware, edit the thermal printer, set a valid MAC (AA:BB:CC:DD:EE:FF), then retry.',
       );
     }
 
@@ -278,7 +311,7 @@ export class HardwareService {
           : 'Send escposBase64 to USB/QZ Tray raw printer, or download the .bin file.',
       mode: printer ? 'device' : 'preview',
       note: printer
-        ? undefined
+        ? 'Payload generated for a configured printer — this confirms the config is well-formed, not that the print actually reached the device.'
         : 'No active thermal printer configured — payload generated for preview/download only.',
     };
   }

@@ -25,6 +25,8 @@ class _PurchaseOrdersScreenState extends State<PurchaseOrdersScreen> {
   final lines = <_PoDraftLine>[_PoDraftLine()];
   final receiveQty = <String, TextEditingController>{};
   final receiveSerials = <String, TextEditingController>{};
+  final receiveBatchNumber = <String, TextEditingController>{};
+  final receiveExpiry = <String, TextEditingController>{};
   bool loading = true;
   bool saving = false;
   String? error;
@@ -43,6 +45,12 @@ class _PurchaseOrdersScreenState extends State<PurchaseOrdersScreen> {
       c.dispose();
     }
     for (final c in receiveSerials.values) {
+      c.dispose();
+    }
+    for (final c in receiveBatchNumber.values) {
+      c.dispose();
+    }
+    for (final c in receiveExpiry.values) {
       c.dispose();
     }
     super.dispose();
@@ -143,10 +151,14 @@ class _PurchaseOrdersScreenState extends State<PurchaseOrdersScreen> {
           .map((s) => s.trim())
           .where((s) => s.isNotEmpty)
           .toList();
+      final batchNumber = receiveBatchNumber[id]?.text.trim() ?? '';
+      final expiryDate = receiveExpiry[id]?.text.trim() ?? '';
       receipts.add({
         'lineId': id,
         'quantity': qty,
         if (serials.isNotEmpty) 'serialNumbers': serials,
+        if (batchNumber.isNotEmpty) 'batchNumber': batchNumber,
+        if (expiryDate.isNotEmpty) 'expiryDate': expiryDate,
       });
     }
     if (receipts.isEmpty) {
@@ -281,9 +293,12 @@ class _PurchaseOrdersScreenState extends State<PurchaseOrdersScreen> {
                               final id = l['id']?.toString() ?? '';
                               receiveQty.putIfAbsent(id, () => TextEditingController());
                               receiveSerials.putIfAbsent(id, () => TextEditingController());
+                              receiveBatchNumber.putIfAbsent(id, () => TextEditingController());
+                              receiveExpiry.putIfAbsent(id, () => TextEditingController());
                               final product = l['product'] is Map
                                   ? asStringKeyedMap(l['product'] as Map)
                                   : <String, dynamic>{};
+                              final trackBatch = product['trackBatch'] == true;
                               final remaining =
                                   asDouble(l['quantity']) - asDouble(l['receivedQty']);
                               return Padding(
@@ -311,6 +326,21 @@ class _PurchaseOrdersScreenState extends State<PurchaseOrdersScreen> {
                                           hintText: 'One per line',
                                         ),
                                       ),
+                                      if (trackBatch) ...[
+                                        TextField(
+                                          controller: receiveBatchNumber[id],
+                                          decoration: const InputDecoration(
+                                            labelText: 'Batch number',
+                                          ),
+                                        ),
+                                        TextField(
+                                          controller: receiveExpiry[id],
+                                          decoration: const InputDecoration(
+                                            labelText: 'Expiry date (optional)',
+                                            hintText: 'YYYY-MM-DD',
+                                          ),
+                                        ),
+                                      ],
                                     ],
                                   ],
                                 ),

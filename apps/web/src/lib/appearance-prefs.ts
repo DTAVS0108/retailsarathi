@@ -17,7 +17,8 @@ export type WebThemeId =
   | 'forest-canopy'
   | 'noir-cyan'
   | 'sky-atelier'
-  | 'ruby-counter';
+  | 'ruby-counter'
+  | 'violet-command';
 
 export type WebDensity = 'comfortable' | 'compact';
 
@@ -664,6 +665,42 @@ export const WEB_THEMES: WebThemeMeta[] = [
       '--rs-border': '#FECDD3',
       '--rs-danger': '#BE123C',
       '--rs-shadow': '0 14px 36px rgba(76, 5, 25, 0.12)',
+      '--rs-radius': '14px',
+    },
+  },
+  {
+    id: 'violet-command',
+    name: 'Violet Command',
+    tagline: 'Executive violet rail',
+    bestFor: 'Owner-level exec overview',
+    sidebarDark: true,
+    preview: {
+      bg: '#F5F3FF',
+      surface: '#FFFFFF',
+      accent: '#DB2777',
+      text: '#3B0764',
+      sidebar: '#3B0764',
+    },
+    vars: {
+      '--rs-bg': '#F5F3FF',
+      '--rs-bg-deep': '#EDE9FE',
+      '--rs-surface': '#FFFFFF',
+      '--rs-surface-2': '#FAF5FF',
+      '--rs-ink': '#3B0764',
+      '--rs-muted': '#7C6A9C',
+      '--rs-accent': '#DB2777',
+      '--rs-accent-hover': '#BE185D',
+      '--rs-accent-soft': '#FCE7F3',
+      '--rs-on-accent': '#FFFFFF',
+      '--rs-accent-secondary': '#7C3AED',
+      '--rs-header': 'linear-gradient(120deg, #3B0764 0%, #581C87 55%, #6D28D9 100%)',
+      '--rs-header-ink': '#F5F3FF',
+      '--rs-sidebar':
+        'linear-gradient(180deg, #4C1D95 0%, #3B0764 55%, #2E1065 100%), radial-gradient(90% 60% at 100% 0%, rgba(219,39,119,0.25), transparent 55%)',
+      ...sidebarDarkTokens('rgba(219,39,119,0.16)', 'rgba(255,255,255,0.12)'),
+      '--rs-border': '#E9D5FF',
+      '--rs-danger': '#DC2626',
+      '--rs-shadow': '0 16px 40px rgba(59, 7, 100, 0.14)',
       '--rs-radius': '14px',
     },
   },

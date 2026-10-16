@@ -18,7 +18,7 @@ import { diskStorage } from 'multer';
 import { mkdirSync, readFileSync, unlinkSync } from 'fs';
 import { extname, join } from 'path';
 import { ProductsService } from './products.service';
-import { CreateProductDto, UpdateProductDto, StockAdjustDto, ParseProductLabelDto } from './dto/product.dto';
+import { CreateProductDto, UpdateProductDto, StockAdjustDto, ParseProductLabelDto, UpsertBatchDto } from './dto/product.dto';
 import { CurrentUser, JwtPayload } from '../common/decorators';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
@@ -244,7 +244,7 @@ export class ProductsController {
   upsertBatch(
     @CurrentUser() user: JwtPayload,
     @Param('id') id: string,
-    @Body() body: { batchNumber: string; expiryDate?: string; quantity: number },
+    @Body() body: UpsertBatchDto,
   ) {
     return this.products.upsertBatch(user.tenantId, id, body);
   }

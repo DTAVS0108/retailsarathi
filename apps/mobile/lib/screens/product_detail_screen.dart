@@ -14,6 +14,7 @@ import 'invoices_screen.dart';
 
 final _inr = NumberFormat.currency(locale: 'en_IN', symbol: '₹');
 final _when = DateFormat('dd MMM yyyy, HH:mm');
+final _dateOnly = DateFormat('dd MMM yyyy');
 
 /// Desktop-parity product detail: KPIs, identity, sold-to, serials, stock movements.
 class ProductDetailScreen extends StatefulWidget {
@@ -36,6 +37,8 @@ class ProductDetailScreen extends StatefulWidget {
 
 class _ProductDetailScreenState extends State<ProductDetailScreen> {
   Map<String, dynamic>? detail;
+  List<Map<String, dynamic>> batches = [];
+  List<Map<String, dynamic>> variants = [];
   bool loading = true;
   String? error;
   bool changed = false;
@@ -53,10 +56,18 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     });
     try {
       final api = context.read<AuthState>().api;
-      final raw = await api.get('/products/${widget.productId}');
+      final results = await Future.wait([
+        api.get('/products/${widget.productId}'),
+        api.get('/products/${widget.productId}/batches').catchError((_) => <dynamic>[]),
+        api.get('/products/${widget.productId}/variants').catchError((_) => <dynamic>[]),
+      ]);
       if (!mounted) return;
+      final batchesRaw = results[1];
+      final variantsRaw = results[2];
       setState(() {
-        detail = asStringKeyedMap(raw);
+        detail = asStringKeyedMap(results[0]);
+        batches = (batchesRaw is List ? batchesRaw : <dynamic>[]).whereType<Map>().map(asStringKeyedMap).toList();
+        variants = (variantsRaw is List ? variantsRaw : <dynamic>[]).whereType<Map>().map(asStringKeyedMap).toList();
         loading = false;
       });
     } catch (e) {
@@ -194,6 +205,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                           _chip('${gst.toStringAsFixed(gst.truncateToDouble() == gst ? 0 : 1)}% GST', AppColors.muted),
                           if ((d?['category']?.toString() ?? '').isNotEmpty) _chip(d!['category'].toString(), AppColors.muted),
                           if (trackSerial) _chip('IMEI tracked', AppColors.warn),
+                          if (trackBatch) _chip('Batch tracked', AppColors.warn),
                           if (needsEnrichment) _chip('Needs details', AppColors.warn),
                         ],
                       ),
@@ -299,6 +311,124 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                                 }),
                               if (serials.length > 40)
                                 Text('…and ${serials.length - 40} more', style: TextStyle(color: AppColors.muted, fontSize: 12)),
+                            ],
+                          ),
+                        ),
+                      ],
+                      if (trackBatch) ...[
+                        const SizedBox(height: AppSpace.sm),
+                        AppPanel(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _sectionTitle(
+                                'Batches · ${batches.fold<double>(0, (s, b) => s + _n(b['quantity'])).toStringAsFixed(0)} units across ${batches.length} batch${batches.length == 1 ? '' : 'es'}',
+                              ),
+                              if (batches.isEmpty)
+                                Text('No batches on file yet.', style: TextStyle(color: AppColors.muted, fontSize: 13))
+                              else
+                                ...batches.map((b) {
+                                  final expiry = DateTime.tryParse(b['expiryDate']?.toString() ?? '');
+                                  final daysLeft = expiry?.difference(DateTime.now()).inDays;
+                                  return Container(
+                                    margin: const EdgeInsets.only(bottom: 6),
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.canvas,
+                                      borderRadius: BorderRadius.circular(AppRadius.sm),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                b['batchNumber']?.toString() ?? '',
+                                                style: const TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.w700, fontSize: 12),
+                                              ),
+                                              if (expiry != null)
+                                                Text(
+                                                  'Expires ${_dateOnly.format(expiry.toLocal())}${daysLeft != null ? ' · ${daysLeft}d left' : ''}',
+                                                  style: TextStyle(
+                                                    fontSize: 11,
+                                                    color: daysLeft != null && daysLeft <= 7 ? AppColors.danger : AppColors.muted,
+                                                  ),
+                                                ),
+                                            ],
+                                          ),
+                                        ),
+                                        Text(
+                                          '${_n(b['quantity']).toStringAsFixed(0)} units',
+                                          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                }),
+                            ],
+                          ),
+                        ),
+                      ],
+                      if (variants.isNotEmpty) ...[
+                        const SizedBox(height: AppSpace.sm),
+                        AppPanel(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _sectionTitle('Variants · ${variants.length}'),
+                              ...variants.map((v) {
+                                final vId = v['id']?.toString();
+                                return InkWell(
+                                  onTap: vId == null || vId.isEmpty
+                                      ? null
+                                      : () {
+                                          Navigator.of(context).push(
+                                            MaterialPageRoute(
+                                              builder: (_) => ProductDetailScreen(
+                                                productId: vId,
+                                                initialName: v['name']?.toString(),
+                                                onEdit: widget.onEdit,
+                                              ),
+                                            ),
+                                          );
+                                        },
+                                  borderRadius: BorderRadius.circular(AppRadius.sm),
+                                  child: Container(
+                                    margin: const EdgeInsets.only(bottom: 6),
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.canvas,
+                                      borderRadius: BorderRadius.circular(AppRadius.sm),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                [v['name']?.toString(), v['variantLabel']?.toString()]
+                                                    .where((e) => (e ?? '').trim().isNotEmpty)
+                                                    .join(' · '),
+                                                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                                              ),
+                                              Text(
+                                                v['sku']?.toString() ?? '',
+                                                style: TextStyle(fontFamily: 'monospace', fontSize: 11, color: AppColors.muted),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        Text(
+                                          'Qty ${_n(v['stockQty']).toStringAsFixed(0)}',
+                                          style: TextStyle(color: AppColors.muted, fontSize: 12),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              }),
                             ],
                           ),
                         ),

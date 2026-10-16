@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { InvoiceType, PaymentMethod, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { calculateInvoice, buildInvoiceQrPayload, parseInvoiceQrPayload, invoiceQrImageUrl, mergeInvoiceDisplayOptions, resolveEffectiveDisplayOptions, isEinvoiceComplianceConfigured, isLiveIrn, mapUnitToUqc, formatIndianAddress } from '@retail-sarathi/gst-engine';
+import { calculateInvoice, buildInvoiceQrPayload, parseInvoiceQrPayload, invoiceQrImageUrl, encodeTextAsQrImage, mergeInvoiceDisplayOptions, resolveEffectiveDisplayOptions, isEinvoiceComplianceConfigured, isLiveIrn, mapUnitToUqc, formatIndianAddress } from '@retail-sarathi/gst-engine';
 import { CreateInvoiceDto } from './dto/invoice.dto';
 import { WholesaleService } from '../wholesale/wholesale.service';
 import { AccountingService } from '../accounting/accounting.service';
@@ -9,11 +9,16 @@ import { CustomersService } from '../customers/customers.service';
 import { InvoiceNumberingService } from './invoice-numbering.service';
 import { formatAppDate } from '../scan/invoice-parse-utils';
 import { resolveTemplateForChannel } from '../billing/billing-templates';
+import { PdfRendererService } from '../pdf/pdf-renderer.service';
 // Print HTML engine lives in @retail-sarathi/ui (no React). Loaded via require so Nest
 // CommonJS resolution does not pull the React UI entrypoint.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { renderInvoiceHtml } = require('@retail-sarathi/ui/invoice-templates') as {
   renderInvoiceHtml: (data: Record<string, unknown>, templateId?: string) => string;
+};
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { combinePrintDocuments } = require('@retail-sarathi/ui/print') as {
+  combinePrintDocuments: (documents: string[]) => string;
 };
 
 @Injectable()
@@ -24,7 +29,110 @@ export class InvoicesService {
     private accounting: AccountingService,
     private customers: CustomersService,
     private numbering: InvoiceNumberingService,
+    private pdfRenderer: PdfRendererService,
   ) {}
+
+  /** FEFO (first-expiry-first-out) stock decrement for a trackBatch product — replaces the single
+      stockLedger SALE row with one row per batch actually touched, so a line that spans two
+      batches produces two ledger rows instead of losing that detail. `Product.stockQty` is still
+      decremented separately by the caller exactly as for a non-batch product; batches are a
+      sub-ledger, not a replacement for it. Throws if the tracked batches can't cover the full
+      quantity (should be rare — it means ProductBatch has drifted from stockQty). */
+  private async consumeBatchesFefo(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    productId: string,
+    productName: string,
+    invoiceId: string,
+    invoiceLineId: string,
+    quantity: number,
+  ) {
+    const batches = await tx.productBatch.findMany({
+      where: { tenantId, productId, quantity: { gt: 0 } },
+      orderBy: [{ expiryDate: 'asc' }, { batchNumber: 'asc' }],
+    });
+    let remaining = quantity;
+    for (const batch of batches) {
+      if (remaining <= 0.0001) break;
+      const take = Math.min(remaining, Number(batch.quantity));
+      if (take <= 0) continue;
+      const updated = await tx.productBatch.updateMany({
+        where: { id: batch.id, quantity: { gte: take } },
+        data: { quantity: { decrement: take } },
+      });
+      if (updated.count === 0) continue; // lost a race to another sale — try the next batch
+      await tx.stockLedger.create({
+        data: {
+          tenantId,
+          productId,
+          type: 'SALE',
+          quantity: -take,
+          referenceId: invoiceId,
+          invoiceLineId,
+          batchId: batch.id,
+          notes: `Batch ${batch.batchNumber}`,
+        },
+      });
+      remaining -= take;
+    }
+    if (remaining > 0.0001) {
+      throw new BadRequestException(
+        `${productName}: tracked batches only cover ${quantity - remaining} of ${quantity} units — add/correct a batch first`,
+      );
+    }
+  }
+
+  /** Reverses batch consumption for a cancelled/returned invoice line — looks up exactly which
+      batches that line's sale touched (via `invoiceLineId` on the SALE ledger rows) and restores
+      them LIFO (most-recently-consumed batch first) up to `restoreQty`, which may be less than the
+      full line quantity for a partial credit-note return. */
+  private async restoreBatchesForLine(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    productId: string,
+    invoiceLineId: string,
+    restoreQty: number,
+  ) {
+    const consumed = await tx.stockLedger.findMany({
+      where: { invoiceLineId, type: 'SALE', batchId: { not: null } },
+      orderBy: { createdAt: 'desc' },
+    });
+    let remaining = restoreQty;
+    for (const row of consumed) {
+      if (remaining <= 0.0001) break;
+      const consumedQty = Math.abs(Number(row.quantity));
+      const restore = Math.min(remaining, consumedQty);
+      if (restore <= 0 || !row.batchId) continue;
+      await tx.productBatch.update({
+        where: { id: row.batchId },
+        data: { quantity: { increment: restore } },
+      });
+      await tx.stockLedger.create({
+        data: {
+          tenantId,
+          productId,
+          type: 'RETURN',
+          quantity: restore,
+          referenceId: row.referenceId,
+          invoiceLineId,
+          batchId: row.batchId,
+          notes: 'Batch restore on return/cancel',
+        },
+      });
+      remaining -= restore;
+    }
+  }
+
+  /** A sale paid partly on CREDIT (udhaar) didn't collect that portion as cash. */
+  private cashCreditSplit(
+    payments: Array<{ method: string; amount: unknown }>,
+    grandTotal: number,
+  ): { cashAmount: number; creditAmount: number } {
+    const creditAmount = payments
+      .filter((p) => p.method === 'CREDIT')
+      .reduce((s, p) => s + Number(p.amount), 0);
+    return { cashAmount: Math.max(0, grandTotal - creditAmount), creditAmount };
+  }
 
   async findAll(
     tenantId: string,
@@ -43,7 +151,7 @@ export class InvoicesService {
   ) {
     const allowedStatus = new Set(['DRAFT', 'FINALIZED', 'CANCELLED']);
     const allowedType = new Set(['TAX_INVOICE', 'BILL_OF_SUPPLY', 'DELIVERY_CHALLAN', 'CREDIT_NOTE']);
-    const allowedPay = new Set(['CASH', 'UPI', 'CARD', 'CREDIT', 'BANK_TRANSFER']);
+    const allowedPay = new Set(['CASH', 'UPI', 'CARD', 'CREDIT', 'BANK_TRANSFER', 'EMI']);
 
     const status = opts?.status?.trim();
     const type = opts?.type?.trim();
@@ -243,6 +351,17 @@ export class InvoicesService {
       throw new BadRequestException('Add at least one line item');
     }
 
+    // Retry-safe creation: a Desktop/Mobile client that lost the response to an earlier
+    // successful POST (dropped connection) can safely retry with the same key instead of
+    // double-billing — return the original invoice rather than creating a duplicate.
+    if (dto.idempotencyKey) {
+      const existing = await this.prisma.invoice.findUnique({
+        where: { idempotencyKey: dto.idempotencyKey },
+        include: { lines: true, payments: true, customer: true },
+      });
+      if (existing && existing.tenantId === tenantId) return existing;
+    }
+
     let customerState: string | undefined;
     let customerSegment: string | undefined;
     let customerCreditLimit = 0;
@@ -292,12 +411,14 @@ export class InvoicesService {
           discount: line.discount ?? 0,
           gstRate: line.gstRate ?? Number(product?.gstRate ?? 18),
           trackSerial: product?.trackSerial ?? false,
+          trackBatch: product?.trackBatch ?? false,
+          costPriceSnapshot: product ? Number(product.purchasePrice) : 0,
         };
       }),
     );
 
     const totals = calculateInvoice(
-      lineInputs.map(({ trackSerial: _t, ...rest }) => rest),
+      lineInputs.map(({ trackSerial: _t, trackBatch: _b, ...rest }) => rest),
       tenant.stateCode,
       customerState,
     );
@@ -378,6 +499,7 @@ export class InvoicesService {
           totalIgst: totals.totalIgst,
           grandTotal: Math.max(0, payableTotal),
           isWholesale,
+          idempotencyKey: dto.idempotencyKey || undefined,
           notes: dto.notes
             ? loyaltyRedeem
               ? `${dto.notes} | Loyalty −₹${loyaltyRedeem}`
@@ -403,6 +525,7 @@ export class InvoicesService {
               taxableAmount: l.taxableAmount,
               total: l.total,
               serialNumbers: dto.lines[i]?.serialNumbers ?? [],
+              costPriceSnapshot: lineInputs[i]?.costPriceSnapshot ?? 0,
             })),
           },
           payments: payments.length
@@ -437,15 +560,28 @@ export class InvoicesService {
             );
           }
 
-          await tx.stockLedger.create({
-            data: {
+          if (lineInputs[i]?.trackBatch) {
+            await this.consumeBatchesFefo(
+              tx,
               tenantId,
-              productId: line.productId,
-              type: 'SALE',
-              quantity: -line.quantity,
-              referenceId: created.id,
-            },
-          });
+              line.productId,
+              line.productName ?? lineInputs[i]?.productName ?? 'Item',
+              created.id,
+              created.lines[i]!.id,
+              line.quantity,
+            );
+          } else {
+            await tx.stockLedger.create({
+              data: {
+                tenantId,
+                productId: line.productId,
+                type: 'SALE',
+                quantity: -line.quantity,
+                referenceId: created.id,
+                invoiceLineId: created.lines[i]?.id,
+              },
+            });
+          }
 
           // Mark serials SOLD when provided
           const serials = line.serialNumbers ?? [];
@@ -466,17 +602,30 @@ export class InvoicesService {
             });
           }
 
-          // Branch stock if present
+          // Branch stock, enforced as a hard floor only when a tenant has opted into per-branch
+          // tracking for this product (a BranchStock row exists — via branch init or a received
+          // transfer). Without a row, a single-branch tenant's sale is governed by the global
+          // Product.stockQty check above only, same as before.
           if (branchId || dto.branchId) {
             const bid = branchId ?? dto.branchId!;
-            await tx.branchStock.updateMany({
-              where: {
-                branchId: bid,
-                productId: line.productId,
-                quantity: { gte: line.quantity },
-              },
-              data: { quantity: { decrement: line.quantity } },
+            const branchStockRow = await tx.branchStock.findUnique({
+              where: { branchId_productId: { branchId: bid, productId: line.productId } },
             });
+            if (branchStockRow) {
+              const updatedBranch = await tx.branchStock.updateMany({
+                where: {
+                  branchId: bid,
+                  productId: line.productId,
+                  quantity: { gte: line.quantity },
+                },
+                data: { quantity: { decrement: line.quantity } },
+              });
+              if (updatedBranch.count === 0) {
+                throw new BadRequestException(
+                  `Insufficient stock for ${line.productName ?? line.productId} at this branch`,
+                );
+              }
+            }
           }
         }
 
@@ -521,6 +670,16 @@ export class InvoicesService {
     });
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        const target = (err.meta?.target as string[] | string | undefined) ?? '';
+        if (dto.idempotencyKey && String(target).includes('idempotencyKey')) {
+          // Two near-simultaneous retries with the same key raced past the pre-check above —
+          // the DB's unique constraint caught it; return the row the other request created.
+          const existing = await this.prisma.invoice.findUnique({
+            where: { idempotencyKey: dto.idempotencyKey },
+            include: { lines: true, payments: true, customer: true },
+          });
+          if (existing) return existing;
+        }
         throw new ConflictException(
           'Invoice number conflict — please retry the sale (another counter may have used the same sequence).',
         );
@@ -529,7 +688,11 @@ export class InvoicesService {
     }
 
     if (shouldAffectStock) {
-      await this.accounting.autoPostSaleIfEnabled(tenantId, invoice.id, Number(invoice.grandTotal));
+      await this.accounting.autoPostSaleIfEnabled(
+        tenantId,
+        invoice.id,
+        this.cashCreditSplit(invoice.payments, Number(invoice.grandTotal)),
+      );
       if (dto.customerId) {
         await this.customers.earnLoyalty(
           tenantId,
@@ -555,6 +718,16 @@ export class InvoicesService {
       throw new BadRequestException('Only draft/held bills can be finalized');
     }
 
+    // Held bills can be created with no payments (e.g. desktop's hold flow); mirror
+    // create()'s payment-total guard here so "finalize as-is" can't skip it.
+    const paySum = invoice.payments.reduce((s, p) => s + Number(p.amount), 0);
+    const payableTotal = Number(invoice.grandTotal);
+    if (Math.abs(paySum - payableTotal) > 0.05) {
+      throw new BadRequestException(
+        `Payments (₹${paySum.toFixed(2)}) must equal bill total (₹${payableTotal.toFixed(2)}) — add payment to this draft before finalizing.`,
+      );
+    }
+
     // Re-run stock deduction path by converting via create-like logic
     return this.prisma.$transaction(async (tx) => {
       for (const line of invoice.lines) {
@@ -567,15 +740,21 @@ export class InvoicesService {
         if (updated.count === 0) {
           throw new BadRequestException(`Insufficient stock for ${line.productName}`);
         }
-        await tx.stockLedger.create({
-          data: {
-            tenantId,
-            productId: line.productId,
-            type: 'SALE',
-            quantity: -qty,
-            referenceId: invoice.id,
-          },
-        });
+        const product = await tx.product.findFirst({ where: { id: line.productId, tenantId }, select: { trackBatch: true } });
+        if (product?.trackBatch) {
+          await this.consumeBatchesFefo(tx, tenantId, line.productId, line.productName, invoice.id, line.id, qty);
+        } else {
+          await tx.stockLedger.create({
+            data: {
+              tenantId,
+              productId: line.productId,
+              type: 'SALE',
+              quantity: -qty,
+              referenceId: invoice.id,
+              invoiceLineId: line.id,
+            },
+          });
+        }
 
         for (const sn of line.serialNumbers ?? []) {
           const serial = await tx.productSerial.findFirst({
@@ -590,14 +769,24 @@ export class InvoicesService {
           });
         }
 
-        await tx.branchStock.updateMany({
-          where: {
-            branchId: invoice.branchId,
-            productId: line.productId,
-            quantity: { gte: qty },
-          },
-          data: { quantity: { decrement: qty } },
-        });
+        if (invoice.branchId) {
+          const branchStockRow = await tx.branchStock.findUnique({
+            where: { branchId_productId: { branchId: invoice.branchId, productId: line.productId } },
+          });
+          if (branchStockRow) {
+            const updatedBranch = await tx.branchStock.updateMany({
+              where: {
+                branchId: invoice.branchId,
+                productId: line.productId,
+                quantity: { gte: qty },
+              },
+              data: { quantity: { decrement: qty } },
+            });
+            if (updatedBranch.count === 0) {
+              throw new BadRequestException(`Insufficient stock for ${line.productName} at this branch`);
+            }
+          }
+        }
       }
 
       const creditPaid = invoice.payments
@@ -633,7 +822,11 @@ export class InvoicesService {
         include: { lines: true, payments: true, customer: true },
       });
     }).then(async (finalized) => {
-      await this.accounting.autoPostSaleIfEnabled(tenantId, finalized.id, Number(finalized.grandTotal));
+      await this.accounting.autoPostSaleIfEnabled(
+        tenantId,
+        finalized.id,
+        this.cashCreditSplit(finalized.payments, Number(finalized.grandTotal)),
+      );
       if (finalized.customerId) {
         await this.customers.earnLoyalty(
           tenantId,
@@ -704,16 +897,22 @@ export class InvoicesService {
               where: { id: line.productId },
               data: { stockQty: { increment: Number(line.quantity) } },
             });
-            await tx.stockLedger.create({
-              data: {
-                tenantId,
-                productId: line.productId,
-                type: 'RETURN',
-                quantity: Number(line.quantity),
-                referenceId: invoice.id,
-                notes: 'Invoice cancelled',
-              },
-            });
+            const product = await tx.product.findFirst({ where: { id: line.productId, tenantId }, select: { trackBatch: true } });
+            if (product?.trackBatch) {
+              await this.restoreBatchesForLine(tx, tenantId, line.productId, line.id, Number(line.quantity));
+            } else {
+              await tx.stockLedger.create({
+                data: {
+                  tenantId,
+                  productId: line.productId,
+                  type: 'RETURN',
+                  quantity: Number(line.quantity),
+                  referenceId: invoice.id,
+                  invoiceLineId: line.id,
+                  notes: 'Invoice cancelled',
+                },
+              });
+            }
 
             for (const sn of line.serialNumbers ?? []) {
               await tx.productSerial.updateMany({
@@ -795,7 +994,11 @@ export class InvoicesService {
     });
 
     if (wasFinalized) {
-      await this.accounting.reverseSaleIfEnabled(tenantId, invoice.id, Number(invoice.grandTotal));
+      await this.accounting.reverseSaleIfEnabled(
+        tenantId,
+        invoice.id,
+        this.cashCreditSplit(invoice.payments, Number(invoice.grandTotal)),
+      );
     }
 
     return cancelled;
@@ -880,6 +1083,7 @@ export class InvoicesService {
         discount: Number(src.discount) * ratio,
         gstRate: Number(src.gstRate),
         serialNumbers,
+        costPriceSnapshot: src.costPriceSnapshot != null ? Number(src.costPriceSnapshot) : 0,
       };
     });
 
@@ -937,6 +1141,7 @@ export class InvoicesService {
               total: l.total,
               sourceInvoiceLineId: returnLines[i].invoiceLineId,
               serialNumbers: returnLines[i].serialNumbers,
+              costPriceSnapshot: returnLines[i].costPriceSnapshot,
             })),
           },
         },
@@ -949,16 +1154,25 @@ export class InvoicesService {
           where: { id: line.productId },
           data: { stockQty: { increment: line.quantity } },
         });
-        await tx.stockLedger.create({
-          data: {
-            tenantId,
-            productId: line.productId,
-            type: 'RETURN',
-            quantity: line.quantity,
-            referenceId: creditNote.id,
-            notes: `Credit note ${invoiceNumber}`,
-          },
-        });
+        const product = await tx.product.findFirst({ where: { id: line.productId, tenantId }, select: { trackBatch: true } });
+        if (product?.trackBatch) {
+          // Restores against the ORIGINAL sale line's id — that's what SALE-type ledger rows were
+          // tagged with when the batches were consumed, so a partial return only restores as much
+          // as was actually returned, LIFO.
+          await this.restoreBatchesForLine(tx, tenantId, line.productId, line.invoiceLineId, line.quantity);
+        } else {
+          await tx.stockLedger.create({
+            data: {
+              tenantId,
+              productId: line.productId,
+              type: 'RETURN',
+              quantity: line.quantity,
+              referenceId: creditNote.id,
+              invoiceLineId: line.invoiceLineId,
+              notes: `Credit note ${invoiceNumber}`,
+            },
+          });
+        }
 
         for (const sn of line.serialNumbers) {
           await tx.productSerial.updateMany({
@@ -994,7 +1208,19 @@ export class InvoicesService {
       return creditNote;
     });
 
-    await this.accounting.reverseSaleIfEnabled(tenantId, creditNote.id, Number(totals.grandTotal));
+    {
+      // Attribute the refund to cash/credit in the same proportion as the original sale —
+      // a return against a fully-credit sale should reverse Accounts Receivable, not Cash.
+      const originalGrandTotal = Number(original.grandTotal);
+      const originalSplit = this.cashCreditSplit(original.payments, originalGrandTotal);
+      const creditRatio = originalGrandTotal > 0 ? originalSplit.creditAmount / originalGrandTotal : 0;
+      const refundTotal = Number(totals.grandTotal);
+      const creditAmount = refundTotal * creditRatio;
+      await this.accounting.reverseSaleIfEnabled(tenantId, creditNote.id, {
+        cashAmount: refundTotal - creditAmount,
+        creditAmount,
+      });
+    }
 
     return {
       ...creditNote,
@@ -1159,6 +1385,14 @@ export class InvoicesService {
       irn: displayOptions.showIrn ? (invoice.irn ?? undefined) : undefined,
       storedQr: invoice.einvoiceQr ?? undefined,
     });
+    // A shop QR links to the invoice's own public view page (so a customer's scan opens the
+    // real invoice) instead of encoding raw pipe-delimited text; the NIC e-invoice QR kind is
+    // left untouched since that payload is a government-signed format, not ours to redirect.
+    const webOrigin = (process.env.CORS_ORIGIN || 'http://localhost:3000')
+      .split(',')[0]
+      .trim()
+      .replace(/\/$/, '');
+    const publicViewUrl = qrKind === 'shop' ? `${webOrigin}/invoice/${invoice.id}` : undefined;
 
     return {
       ...printBase,
@@ -1167,7 +1401,12 @@ export class InvoicesService {
       qrKind: displayOptions.showQr ? qrKind : undefined,
       qrPayload: displayOptions.showQr ? qrPayload : undefined,
       qrParsed: displayOptions.showQr ? parseInvoiceQrPayload(qrPayload) : undefined,
-      qrUrl: displayOptions.showQr ? invoiceQrImageUrl(qrPayload) : undefined,
+      publicViewUrl: displayOptions.showQr ? publicViewUrl : undefined,
+      qrUrl: displayOptions.showQr
+        ? publicViewUrl
+          ? encodeTextAsQrImage(publicViewUrl)
+          : invoiceQrImageUrl(qrPayload)
+        : undefined,
     };
   }
 
@@ -1184,6 +1423,49 @@ export class InvoicesService {
       templateId,
       channel,
       copyKind,
+    };
+  }
+
+  /** True one-click "Download invoice" — bundles the tenant's configured copy count (1-3 for a
+      tax invoice, always 1 for a credit note, same rule the web UI already applies) into a single
+      PDF rendered server-side, instead of a client-side print window. */
+  async getDownloadPdf(tenantId: string, id: string) {
+    const invoice = await this.findOne(tenantId, id);
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
+    const isCreditNote = invoice.type === 'CREDIT_NOTE';
+    const count = isCreditNote ? 1 : Math.min(3, Math.max(1, tenant?.invoiceCopyCount ?? 1));
+    const kinds = (['original', 'duplicate', 'triplicate'] as const).slice(0, count);
+
+    const docs: string[] = [];
+    for (const kind of kinds) {
+      const data = await this.getPrintData(tenantId, id, 'web', kind);
+      const templateId = data.templateId ?? 'classic';
+      docs.push(renderInvoiceHtml(data as Record<string, unknown>, templateId));
+    }
+    const html = combinePrintDocuments(docs);
+    const pdf = await this.pdfRenderer.renderPdf(html);
+
+    return {
+      filename: `${invoice.invoiceNumber}.pdf`,
+      base64: pdf.toString('base64'),
+    };
+  }
+
+  /** Public, unauthenticated, permanent invoice view — the page a customer lands on after
+      scanning the QR printed on their copy. Looked up by the invoice's own id (already an
+      unguessable cuid, so no separate token is needed), with the tenant derived from the
+      invoice record itself since a public visitor has no authenticated tenant context. */
+  async getPublicInvoiceHtml(id: string) {
+    const invoice = await this.prisma.invoice.findUnique({
+      where: { id },
+      select: { tenantId: true },
+    });
+    if (!invoice) throw new NotFoundException('Invoice not found');
+    const data = await this.getPrintData(invoice.tenantId, id);
+    const templateId = data.templateId ?? 'classic';
+    return {
+      html: renderInvoiceHtml(data as Record<string, unknown>, templateId),
+      invoiceNumber: data.invoiceNumber,
     };
   }
 

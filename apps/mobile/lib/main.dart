@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'l10n/app_strings.dart';
 import 'screens/app_screens.dart';
 import 'services/auth_state.dart';
+import 'services/local_db.dart';
 import 'services/offline_sync.dart';
 import 'services/voice_billing.dart';
 import 'theme/branding_prefs.dart';
@@ -11,6 +12,7 @@ import 'theme/theme_controller.dart';
 import 'theme/appearance_prefs.dart';
 import 'widgets/app_splash.dart';
 import 'widgets/floating_calculator.dart';
+import 'widgets/migration_gate.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -18,6 +20,10 @@ Future<void> main() async {
   await ThemeController.instance.bootstrap();
   await AppearancePrefsController.instance.bootstrap();
   await BrandingPrefsController.instance.bootstrap();
+  // Resolves (or, if blocked, locks in) the local-DB migration state before anything else in the
+  // app can touch LocalDb.instance.db — otherwise a provider's own bootstrap (OfflineSyncService)
+  // could race ahead and try to open a still-plaintext file with the encryption password.
+  await LocalDb.instance.checkMigration();
   runApp(const RetailSarathiApp());
 }
 
@@ -79,6 +85,6 @@ class _Root extends StatelessWidget {
     if (!auth.isLoggedIn) {
       return const LoginScreen();
     }
-    return const ShellScreen();
+    return const MigrationGate(child: ShellScreen());
   }
 }

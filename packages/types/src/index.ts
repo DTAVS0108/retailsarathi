@@ -4,7 +4,7 @@ export type UserRole = 'OWNER' | 'MANAGER' | 'CASHIER' | 'TECHNICIAN';
 
 export type InvoiceType = 'TAX_INVOICE' | 'BILL_OF_SUPPLY' | 'DELIVERY_CHALLAN';
 export type InvoiceStatus = 'DRAFT' | 'FINALIZED' | 'CANCELLED';
-export type PaymentMethod = 'CASH' | 'UPI' | 'CARD' | 'CREDIT' | 'BANK_TRANSFER';
+export type PaymentMethod = 'CASH' | 'UPI' | 'CARD' | 'CREDIT' | 'BANK_TRANSFER' | 'EMI';
 export type SupplyType = 'INTRA_STATE' | 'INTER_STATE';
 
 export type CustomerSegment = 'RETAIL' | 'DEALER' | 'DISTRIBUTOR' | 'CORPORATE';
@@ -13,11 +13,30 @@ export type PriceListType = 'RETAIL' | 'DEALER' | 'DISTRIBUTOR' | 'WHOLESALE';
 export type RepairStatus =
   | 'RECEIVED'
   | 'DIAGNOSED'
+  | 'AWAITING_CUSTOMER_APPROVAL'
   | 'AWAITING_PARTS'
   | 'IN_REPAIR'
+  | 'ON_HOLD'
   | 'READY'
   | 'DELIVERED'
   | 'CANCELLED';
+
+/**
+ * Legal next statuses for each repair status. Single source of truth for web + desktop
+ * (both import this); mobile (Dart) mirrors it by hand since it can't import a TS const —
+ * see apps/mobile/lib/constants/repair_status_flow.dart.
+ */
+export const REPAIR_STATUS_FLOW: Record<RepairStatus, RepairStatus[]> = {
+  RECEIVED: ['DIAGNOSED', 'CANCELLED'],
+  DIAGNOSED: ['AWAITING_CUSTOMER_APPROVAL', 'AWAITING_PARTS', 'IN_REPAIR', 'CANCELLED'],
+  AWAITING_CUSTOMER_APPROVAL: ['AWAITING_PARTS', 'IN_REPAIR', 'CANCELLED'],
+  AWAITING_PARTS: ['IN_REPAIR', 'ON_HOLD', 'CANCELLED'],
+  IN_REPAIR: ['READY', 'ON_HOLD', 'CANCELLED'],
+  ON_HOLD: ['IN_REPAIR', 'AWAITING_PARTS', 'CANCELLED'],
+  READY: ['DELIVERED'],
+  DELIVERED: [],
+  CANCELLED: [],
+};
 
 export type NotificationChannel = 'WHATSAPP' | 'SMS' | 'EMAIL';
 export type NotificationStatus = 'PENDING' | 'SENT' | 'FAILED';

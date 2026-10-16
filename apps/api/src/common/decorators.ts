@@ -20,3 +20,16 @@ export const ROLES_KEY = 'roles';
 export const Roles = (...roles: UserRole[]) => SetMetadata(ROLES_KEY, roles);
 
 export const Public = () => SetMetadata('isPublic', true);
+
+export interface PlatformAdminPayload {
+  sub: string;
+  email: string;
+  platformAdmin: true;
+}
+
+export const CurrentPlatformAdmin = createParamDecorator(
+  (_data: unknown, ctx: ExecutionContext): PlatformAdminPayload => {
+    const request = ctx.switchToHttp().getRequest();
+    return request.platformAdmin;
+  },
+);

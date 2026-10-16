@@ -3,8 +3,10 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { randomBytes } from 'crypto';
 import { EcommerceOrderStatus, EcommercePlatform, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { encryptJson, decryptJson } from './credentials-crypto.util';
 
 const ORDER_STATUSES = new Set<string>(Object.values(EcommerceOrderStatus));
 
@@ -242,12 +244,21 @@ export class EcommerceService {
     return PLATFORM_CATALOG.find((p) => p.id === platform);
   }
 
+  /** Never return the raw `credentials` JSON to a client — only key names and a boolean. */
+  private redactChannel<T extends { credentials: unknown }>(channel: T) {
+    const { credentials, ...rest } = channel;
+    const decrypted = decryptJson(credentials);
+    const credentialFields = Object.keys(decrypted);
+    return { ...rest, hasCredentials: credentialFields.length > 0, credentialFields };
+  }
+
   async listChannels(tenantId: string) {
-    return this.prisma.ecommerceChannel.findMany({
+    const channels = await this.prisma.ecommerceChannel.findMany({
       where: { tenantId },
       include: { _count: { select: { orders: true } } },
       orderBy: { createdAt: 'desc' },
     });
+    return channels.map((c) => this.redactChannel(c));
   }
 
   async createChannel(
@@ -260,14 +271,16 @@ export class EcommerceService {
       throw new BadRequestException('Unsupported marketplace platform');
     }
 
-    return this.prisma.ecommerceChannel.create({
+    const channel = await this.prisma.ecommerceChannel.create({
       data: {
         tenantId,
         platform: data.platform as EcommercePlatform,
         name,
-        credentials: (data.credentials ?? {}) as Prisma.InputJsonValue,
+        credentials: encryptJson(data.credentials ?? {}) as unknown as Prisma.InputJsonValue,
+        webhookToken: data.platform === 'CUSTOM' ? randomBytes(24).toString('hex') : undefined,
       },
     });
+    return this.redactChannel(channel);
   }
 
   async updateChannel(
@@ -289,17 +302,18 @@ export class EcommerceService {
       throw new BadRequestException('Channel name cannot be empty');
     }
 
-    return this.prisma.ecommerceChannel.update({
+    const updated = await this.prisma.ecommerceChannel.update({
       where: { id: channelId },
       data: {
         ...(name !== undefined ? { name } : {}),
         ...(data.credentials !== undefined
-          ? { credentials: data.credentials as Prisma.InputJsonValue }
+          ? { credentials: encryptJson(data.credentials) as unknown as Prisma.InputJsonValue }
           : {}),
         ...(data.isActive !== undefined ? { isActive: data.isActive } : {}),
       },
       include: { _count: { select: { orders: true } } },
     });
+    return this.redactChannel(updated);
   }
 
   async deleteChannel(tenantId: string, channelId: string) {
@@ -321,7 +335,21 @@ export class EcommerceService {
       throw new BadRequestException('Channel is paused — resume it before syncing');
     }
 
-    // Demo pull — replace with live marketplace APIs in production.
+    if (channel.platform === 'CUSTOM') {
+      // CUSTOM channels are the one real (non-demo) path: orders arrive via inbound webhook,
+      // not a fabricated pull. Nothing to "sync" here — point the user at the webhook instead.
+      return {
+        imported: 0,
+        skipped: 0,
+        orders: [],
+        mode: 'webhook' as const,
+        platform: channel.platform,
+        webhookPath: `/ecommerce/webhook/${channel.id}`,
+        note: 'CUSTOM channels receive orders via webhook — POST from your integration to see them appear here.',
+      };
+    }
+
+    // Demo pull for named marketplaces — no real outbound integration exists for any of them yet.
     const stamp = Date.now().toString(36).toUpperCase();
     const prefix = this.platformMeta(channel.platform)?.orderPrefix ?? 'CX';
     const label = this.platformMeta(channel.platform)?.label ?? channel.platform;
@@ -411,6 +439,55 @@ export class EcommerceService {
       data: { status: status as EcommerceOrderStatus },
       include: { channel: { select: { id: true, name: true, platform: true } } },
     });
+  }
+
+  /**
+   * Real inbound order ingestion for CUSTOM channels — validated by a per-channel bearer token,
+   * not JWT (external systems have no RetailSarathi login). Same dedupe-by-externalId semantics
+   * as the demo `syncOrders` path.
+   */
+  async receiveWebhookOrder(
+    channelId: string,
+    token: string | undefined,
+    body: {
+      externalId?: string;
+      customerName?: string;
+      totalAmount?: number;
+      items?: Array<{ sku?: string; name?: string; qty?: number; rate?: number }>;
+    },
+  ) {
+    const channel = await this.prisma.ecommerceChannel.findFirst({ where: { id: channelId } });
+    if (!channel || channel.platform !== 'CUSTOM') {
+      throw new NotFoundException('Webhook channel not found');
+    }
+    if (!token || !channel.webhookToken || token !== channel.webhookToken) {
+      throw new BadRequestException('Invalid webhook token');
+    }
+    if (!channel.isActive) {
+      throw new BadRequestException('Channel is paused');
+    }
+    if (!body.externalId || !body.totalAmount) {
+      throw new BadRequestException('externalId and totalAmount are required');
+    }
+
+    const existing = await this.prisma.ecommerceOrder.findUnique({
+      where: { channelId_externalId: { channelId, externalId: body.externalId } },
+    });
+    if (existing) {
+      return { imported: false, orderId: existing.id, reason: 'duplicate externalId — skipped' };
+    }
+
+    const order = await this.prisma.ecommerceOrder.create({
+      data: {
+        channelId,
+        externalId: body.externalId,
+        customerName: body.customerName ?? null,
+        totalAmount: body.totalAmount,
+        payload: body as unknown as Prisma.InputJsonValue,
+      },
+    });
+    await this.prisma.ecommerceChannel.update({ where: { id: channelId }, data: { lastSyncAt: new Date() } });
+    return { imported: true, orderId: order.id };
   }
 
   async overview(tenantId: string) {

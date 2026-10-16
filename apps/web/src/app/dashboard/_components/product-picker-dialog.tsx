@@ -28,6 +28,8 @@ export function ProductPickerDialog({
   products,
   onClose,
   onSelect,
+  onDecrement,
+  onRemove,
   /** Qty already on the current bill, keyed by product id. */
   reservedQtyByProductId = {},
 }: {
@@ -35,6 +37,10 @@ export function ProductPickerDialog({
   products: PickerProduct[];
   onClose: () => void;
   onSelect: (product: PickerProduct) => void;
+  /** Removes one unit of an already-on-bill product. Omit to hide the qty stepper. */
+  onDecrement?: (product: PickerProduct) => void;
+  /** Removes the product from the bill entirely, regardless of quantity. Omit to hide the deselect button. */
+  onRemove?: (product: PickerProduct) => void;
   reservedQtyByProductId?: Record<string, number>;
 }) {
   const searchRef = useRef<HTMLInputElement>(null);
@@ -245,7 +251,7 @@ export function ProductPickerDialog({
               ? ` · ${products.length - filtered.length} out of stock hidden`
               : ''}
             {Object.keys(reservedQtyByProductId).length
-              ? ' · excludes items already on this bill'
+              ? ' · highlighted items are already on this bill — quantities shown are what\'s left to add'
               : ''}
           </p>
         </div>
@@ -259,25 +265,44 @@ export function ProductPickerDialog({
                 const qty = availableQty(p);
                 const reserved = toNumber(reservedQtyByProductId[p.id]);
                 const out = qty <= 0;
+                const selected = reserved > 0;
                 return (
                   <li key={p.id}>
-                    <button
-                      type="button"
-                      disabled={out}
+                    <div
+                      role="button"
+                      tabIndex={out ? -1 : 0}
+                      aria-disabled={out}
+                      aria-pressed={selected}
                       onClick={() => {
                         if (out) return;
                         onSelect(p);
                       }}
+                      onKeyDown={(e) => {
+                        if (out) return;
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          onSelect(p);
+                        }
+                      }}
                       className={cn(
-                        'flex w-full flex-col rounded-xl border px-3 py-3 text-left transition',
+                        'flex w-full flex-col rounded-xl border px-3 py-3 text-left transition-all duration-200',
                         out
                           ? 'cursor-not-allowed border-slate-100 bg-slate-50 opacity-60'
-                          : 'border-slate-200 bg-white hover:border-teal-300 hover:bg-teal-50/50 active:scale-[0.99]',
+                          : selected
+                            ? 'cursor-pointer border-teal-400 bg-teal-50/70 ring-1 ring-teal-300 shadow-sm shadow-teal-200/60 hover:bg-teal-50'
+                            : 'cursor-pointer border-slate-200 bg-white hover:border-teal-300 hover:bg-teal-50/50 active:scale-[0.99]',
                       )}
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <p className="truncate font-semibold text-slate-900">{p.name}</p>
+                          <p className="flex items-center gap-1.5 truncate font-semibold text-slate-900">
+                            {selected ? (
+                              <span className="flex h-4 w-4 shrink-0 animate-pop-in items-center justify-center rounded-full bg-teal-600 text-[10px] font-bold text-white">
+                                ✓
+                              </span>
+                            ) : null}
+                            <span className="truncate">{p.name}</span>
+                          </p>
                           <p className="mt-0.5 truncate text-xs text-slate-500">
                             {p.sku}
                             {p.brand ? ` · ${p.brand}` : ''}
@@ -286,32 +311,78 @@ export function ProductPickerDialog({
                         </div>
                         <p className="shrink-0 font-semibold text-brand">{formatINR(toNumber(p.salePrice))}</p>
                       </div>
-                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                        {p.category ? (
-                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600">
-                            {p.category}
+                      <div className="mt-2 flex items-center justify-between gap-2">
+                        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                          {p.category ? (
+                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600">
+                              {p.category}
+                            </span>
+                          ) : null}
+                          {p.trackSerial ? (
+                            <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-800">
+                              IMEI
+                            </span>
+                          ) : null}
+                          <span
+                            className={cn(
+                              'rounded-full px-2 py-0.5 text-[10px] font-medium',
+                              out
+                                ? 'bg-red-50 text-red-700'
+                                : qty <= (toNumber(p.lowStockThreshold) || 5)
+                                  ? 'bg-amber-50 text-amber-800'
+                                  : 'bg-emerald-50 text-emerald-800',
+                            )}
+                          >
+                            {out ? 'No stock left' : `${qty} left`}
                           </span>
+                        </div>
+                        {selected ? (
+                          <div
+                            className="flex shrink-0 animate-pop-in items-center gap-1.5"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <div
+                              role="group"
+                              aria-label={`Quantity on bill for ${p.name}`}
+                              className="flex items-center gap-2 rounded-full bg-white px-1 py-1 ring-1 ring-teal-300"
+                            >
+                              <button
+                                type="button"
+                                onClick={() => onDecrement?.(p)}
+                                disabled={!onDecrement}
+                                aria-label={`Remove one ${p.name}`}
+                                className="flex h-6 w-6 items-center justify-center rounded-full text-red-600 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-40"
+                              >
+                                −
+                              </button>
+                              <span className="min-w-[1.25rem] text-center text-xs font-bold text-teal-900">
+                                {reserved} on bill
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => onSelect(p)}
+                                disabled={out}
+                                aria-label={`Add one more ${p.name}`}
+                                className="flex h-6 w-6 items-center justify-center rounded-full text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-40"
+                              >
+                                +
+                              </button>
+                            </div>
+                            {onRemove ? (
+                              <button
+                                type="button"
+                                onClick={() => onRemove(p)}
+                                aria-label={`Remove ${p.name} from bill entirely`}
+                                title="Remove from bill"
+                                className="flex h-7 w-7 items-center justify-center rounded-full text-red-500 ring-1 ring-red-200 transition hover:bg-red-100 hover:text-red-700"
+                              >
+                                ×
+                              </button>
+                            ) : null}
+                          </div>
                         ) : null}
-                        {p.trackSerial ? (
-                          <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-800">
-                            IMEI
-                          </span>
-                        ) : null}
-                        <span
-                          className={cn(
-                            'rounded-full px-2 py-0.5 text-[10px] font-medium',
-                            out
-                              ? 'bg-red-50 text-red-700'
-                              : qty <= (toNumber(p.lowStockThreshold) || 5)
-                                ? 'bg-amber-50 text-amber-800'
-                                : 'bg-emerald-50 text-emerald-800',
-                          )}
-                        >
-                          {out ? 'No stock left' : `Available ${qty}`}
-                          {reserved > 0 ? ` · ${reserved} on bill` : ''}
-                        </span>
                       </div>
-                    </button>
+                    </div>
                   </li>
                 );
               })}

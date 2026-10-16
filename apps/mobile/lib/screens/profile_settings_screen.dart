@@ -315,13 +315,16 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
       success = null;
     });
     try {
-      final api = context.read<AuthState>().api;
+      final auth = context.read<AuthState>();
+      final api = auth.api;
       final stateCode = fromGstin ?? stateCtrl.text.trim();
       await api.patch('/tenants/profile', body: {
         'name': nameCtrl.text.trim(),
         'phone': phoneCtrl.text.trim().isEmpty ? null : phoneCtrl.text.trim(),
         'email': emailCtrl.text.trim().isEmpty ? null : emailCtrl.text.trim(),
-        'gstin': gstin.isEmpty ? null : gstin,
+        // GSTIN is owner-only server-side; omit it entirely for a non-owner so saving the rest
+        // of this shared form (name/phone/address/etc.) doesn't 403.
+        if (auth.isOwner) 'gstin': gstin.isEmpty ? null : gstin,
         'stateCode': stateCode,
         'address': addressCtrl.text.trim().isEmpty ? null : addressCtrl.text.trim(),
         'compositionScheme': compositionScheme,
@@ -596,11 +599,15 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                       ),
                       TextField(
                         controller: gstinCtrl,
+                        enabled: authUser?.role == 'OWNER',
                         textCapitalization: TextCapitalization.characters,
                         maxLength: 15,
                         decoration: InputDecoration(
                           labelText: strings.t('gstin'),
                           counterText: '',
+                          helperText: authUser?.role == 'OWNER'
+                              ? null
+                              : 'Only the shop owner can change the GSTIN',
                         ),
                         onChanged: (v) {
                           final code = _stateFromGstin(v);

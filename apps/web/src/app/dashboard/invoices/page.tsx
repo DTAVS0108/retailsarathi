@@ -22,6 +22,7 @@ import { pageShellClassName,
   toNumber,
 } from '../_components/dashboard-ui';
 import { ScrollableTabBar } from '../_components/scrollable-tab-bar';
+import { RowActionsMenu } from '../_components/row-actions-menu';
 
 interface Invoice {
   id: string;
@@ -63,6 +64,7 @@ const PAYMENT_OPTIONS = [
   { value: 'CARD', label: 'Card' },
   { value: 'CREDIT', label: 'Credit / udhaar' },
   { value: 'BANK_TRANSFER', label: 'Bank transfer' },
+  { value: 'EMI', label: 'EMI' },
 ] as const;
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
 const SORT_FIELDS = [
@@ -177,6 +179,13 @@ export default function InvoicesPage() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [invoiceCopyCount, setInvoiceCopyCount] = useState(1);
+
+  useEffect(() => {
+    void apiWithAuth<{ invoiceCopyCount?: number }>('/tenants/profile')
+      .then((res) => setInvoiceCopyCount(res.invoiceCopyCount ?? 1))
+      .catch(() => undefined);
+  }, []);
 
   async function loadInvoices(next = filters) {
     try {
@@ -663,12 +672,6 @@ export default function InvoicesPage() {
                           </p>
                         </div>
                         <div className="flex items-center gap-2">
-                          <Link
-                            href={`/dashboard/invoices/${invoice.id}`}
-                            className="text-sm font-medium text-brand hover:underline"
-                          >
-                            Open
-                          </Link>
                           {invoice.status === 'FINALIZED' ? (
                             <InvoicePrintPanel
                               invoiceId={invoice.id}
@@ -678,13 +681,24 @@ export default function InvoicesPage() {
                                 createdAt: invoice.createdAt,
                                 grandTotal: toNumber(invoice.grandTotal),
                                 status: invoice.status,
+                                documentType: invoice.type === 'CREDIT_NOTE' ? 'CREDIT_NOTE' : 'TAX_INVOICE',
                                 payments: invoice.payments,
                                 customer: invoice.customer,
                               }}
                               variant="compact"
                               onError={setError}
+                              invoiceCopyCount={invoiceCopyCount}
+                              extraActions={[
+                                { key: 'open', label: 'Open bill', onClick: () => router.push(`/dashboard/invoices/${invoice.id}`) },
+                              ]}
                             />
-                          ) : null}
+                          ) : (
+                            <RowActionsMenu
+                              actions={[
+                                { key: 'open', label: 'Open bill', onClick: () => router.push(`/dashboard/invoices/${invoice.id}`) },
+                              ]}
+                            />
+                          )}
                         </div>
                       </div>
                     </li>
@@ -766,13 +780,7 @@ export default function InvoicesPage() {
                         </p>
                       </td>
                       <td className={cn(tableCellClassName, 'text-right')}>
-                        <div className="flex items-center justify-end gap-2">
-                          <Link
-                            href={`/dashboard/invoices/${invoice.id}`}
-                            className="text-sm font-medium text-brand hover:underline"
-                          >
-                            Open
-                          </Link>
+                        <div className="flex items-center justify-end">
                           {invoice.status === 'FINALIZED' ? (
                             <InvoicePrintPanel
                               invoiceId={invoice.id}
@@ -782,13 +790,24 @@ export default function InvoicesPage() {
                                 createdAt: invoice.createdAt,
                                 grandTotal: toNumber(invoice.grandTotal),
                                 status: invoice.status,
+                                documentType: invoice.type === 'CREDIT_NOTE' ? 'CREDIT_NOTE' : 'TAX_INVOICE',
                                 payments: invoice.payments,
                                 customer: invoice.customer,
                               }}
                               variant="compact"
                               onError={setError}
+                              invoiceCopyCount={invoiceCopyCount}
+                              extraActions={[
+                                { key: 'open', label: 'Open bill', onClick: () => router.push(`/dashboard/invoices/${invoice.id}`) },
+                              ]}
                             />
-                          ) : null}
+                          ) : (
+                            <RowActionsMenu
+                              actions={[
+                                { key: 'open', label: 'Open bill', onClick: () => router.push(`/dashboard/invoices/${invoice.id}`) },
+                              ]}
+                            />
+                          )}
                         </div>
                       </td>
                     </tr>

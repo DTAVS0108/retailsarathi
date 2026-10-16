@@ -39,18 +39,30 @@ export class SyncService {
       });
 
       try {
-        await this.applyEntry(tenantId, entry);
+        const applied = await this.applyEntry(tenantId, entry);
         await this.prisma.syncOutbox.update({
           where: { id: record.id },
           data: { status: 'SYNCED', syncedAt: new Date() },
         });
-        results.push({ entityId: entry.entityId, status: 'SYNCED' });
+        // For invoices specifically, hand back the server-assigned id/number so the client can
+        // replace its local "LOCAL-..." placeholder instead of displaying it forever.
+        results.push({
+          entityId: entry.entityId,
+          status: 'SYNCED',
+          ...(applied?.invoiceId ? { invoiceId: applied.invoiceId, invoiceNumber: applied.invoiceNumber } : {}),
+        });
       } catch (err) {
+        // A message prefixed "CONFLICT:" means applyEntry recognized an unsafe/contradictory
+        // apply (oversold stock, reused invoice number, already-sold serial) — route it to the
+        // CONFLICT status so it surfaces via getConflicts()/resolveConflict() instead of being
+        // silently retried forever as a generic FAILED row.
+        const message = String(err);
+        const isConflict = err instanceof Error && err.message.startsWith('CONFLICT:');
         await this.prisma.syncOutbox.update({
           where: { id: record.id },
-          data: { status: 'FAILED', error: String(err) },
+          data: { status: isConflict ? 'CONFLICT' : 'FAILED', error: message },
         });
-        results.push({ entityId: entry.entityId, status: 'FAILED', error: String(err) });
+        results.push({ entityId: entry.entityId, status: isConflict ? 'CONFLICT' : 'FAILED', error: message });
       }
     }
 
@@ -120,7 +132,7 @@ export class SyncService {
       operation: string;
       payload: Record<string, unknown>;
     },
-  ) {
+  ): Promise<{ invoiceId: string; invoiceNumber: string } | void> {
     const { entityType, operation, payload } = entry;
 
     if (entityType === 'product' && operation === 'CREATE') {
@@ -136,6 +148,15 @@ export class SyncService {
     }
 
     if (entityType === 'invoice' && operation === 'CREATE') {
+      const idempotencyKey = payload.idempotencyKey as string | undefined;
+      if (idempotencyKey) {
+        const existingByKey = await this.prisma.invoice.findUnique({ where: { idempotencyKey } });
+        if (existingByKey && existingByKey.tenantId === tenantId) {
+          // Already applied (e.g. this exact outbox entry was pushed twice) — not a conflict.
+          return { invoiceId: existingByKey.id, invoiceNumber: existingByKey.invoiceNumber };
+        }
+      }
+
       const existing = await this.prisma.invoice.findFirst({
         where: { tenantId, invoiceNumber: payload.invoiceNumber as string },
       });
@@ -159,7 +180,7 @@ export class SyncService {
       const seq = last ? parseInt(last.invoiceNumber.replace(prefix, ''), 10) + 1 : 1;
       const serverNumber = `${prefix}${String(seq).padStart(5, '0')}`;
 
-      await this.prisma.$transaction(async (tx) => {
+      const createdInvoice = await this.prisma.$transaction(async (tx) => {
         const invoice = await tx.invoice.create({
           data: {
             tenantId,
@@ -173,6 +194,7 @@ export class SyncService {
             totalSgst: Number(payload.totalSgst ?? 0),
             totalIgst: Number(payload.totalIgst ?? 0),
             grandTotal: Number(payload.grandTotal ?? 0),
+            idempotencyKey: idempotencyKey || undefined,
             notes: `Synced from offline (${payload.invoiceNumber ?? entry.entityId})`,
             lines: {
               create: lines.map((l) => ({
@@ -251,7 +273,11 @@ export class SyncService {
             data: { quantity: { decrement: qty } },
           });
         }
+
+        return invoice;
       });
+
+      return { invoiceId: createdInvoice.id, invoiceNumber: createdInvoice.invoiceNumber };
     }
   }
 

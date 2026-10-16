@@ -27,11 +27,16 @@ export class CustomersService {
         pincode: dto.pincode,
         country: dto.country ?? 'IN',
       });
-      if (dto.gstin && validateGstin(dto.gstin.toUpperCase()) && parsed.stateCode) {
-        const gstState = dto.gstin.slice(0, 2);
-        if (gstState !== parsed.stateCode) {
+      if (dto.gstin) {
+        const gstin = dto.gstin.trim().toUpperCase();
+        if (!validateGstin(gstin)) {
           throw new BadRequestException(
-            `State code ${parsed.stateCode} does not match GSTIN state ${gstState}.`,
+            `Invalid GSTIN "${dto.gstin}" — must be a well-formed 15-character GSTIN (e.g. 09AAAAA0000A1Z5).`,
+          );
+        }
+        if (parsed.stateCode && gstin.slice(0, 2) !== parsed.stateCode) {
+          throw new BadRequestException(
+            `State code ${parsed.stateCode} does not match GSTIN state ${gstin.slice(0, 2)}.`,
           );
         }
       }
@@ -170,15 +175,47 @@ export class CustomersService {
     return customer;
   }
 
+  /** Normalize to a bare 10-digit Indian mobile number; throws if not a valid one. */
+  private normalizePhone(raw: string): string {
+    const digits = raw.replace(/\D/g, '');
+    const bare =
+      digits.length === 12 && digits.startsWith('91')
+        ? digits.slice(2)
+        : digits.length === 11 && digits.startsWith('0')
+          ? digits.slice(1)
+          : digits;
+    if (!/^[6-9]\d{9}$/.test(bare)) {
+      throw new BadRequestException(
+        `Invalid phone number "${raw}" — enter a 10-digit Indian mobile number starting 6-9`,
+      );
+    }
+    return bare;
+  }
+
+  private async assertPhoneNotDuplicate(tenantId: string, phone: string, excludeId?: string) {
+    const existing = await this.prisma.customer.findFirst({
+      where: { tenantId, phone, ...(excludeId ? { id: { not: excludeId } } : {}) },
+      select: { id: true, name: true },
+    });
+    if (existing) {
+      throw new BadRequestException(
+        `Phone number already used by another customer: ${existing.name}`,
+      );
+    }
+  }
+
   async create(tenantId: string, dto: CreateCustomerDto, userId?: string) {
     const addr = this.normalizeCustomerAddress(dto);
+    const phone = this.normalizePhone(dto.phone);
+    await this.assertPhoneNotDuplicate(tenantId, phone);
+    const gstin = dto.gstin ? dto.gstin.trim().toUpperCase() : dto.gstin;
     return this.prisma.customer.create({
       data: {
         tenantId,
         name: dto.name,
-        phone: dto.phone,
+        phone,
         email: dto.email,
-        gstin: dto.gstin,
+        gstin,
         address: addr.address,
         addressLine2: addr.addressLine2,
         city: addr.city,
@@ -202,13 +239,19 @@ export class CustomersService {
 
   async update(tenantId: string, id: string, dto: UpdateCustomerDto, userId?: string) {
     const existing = await this.findOne(tenantId, id);
+    let phone: string | undefined;
+    if (dto.phone !== undefined) {
+      phone = this.normalizePhone(dto.phone);
+      await this.assertPhoneNotDuplicate(tenantId, phone, id);
+    }
     const touchingAddress =
       dto.address !== undefined ||
       dto.addressLine2 !== undefined ||
       dto.city !== undefined ||
       dto.pincode !== undefined ||
       dto.country !== undefined ||
-      dto.stateCode !== undefined;
+      dto.stateCode !== undefined ||
+      dto.gstin !== undefined;
 
     const addr = touchingAddress
       ? this.normalizeCustomerAddress(
@@ -226,13 +269,16 @@ export class CustomersService {
         )
       : null;
 
+    const gstin =
+      dto.gstin !== undefined ? (dto.gstin ? dto.gstin.trim().toUpperCase() : dto.gstin) : undefined;
+
     return this.prisma.customer.update({
       where: { id },
       data: {
         name: dto.name,
-        phone: dto.phone,
+        ...(phone !== undefined ? { phone } : {}),
         email: dto.email,
-        gstin: dto.gstin,
+        gstin,
         ...(addr
           ? {
               address: addr.address,
@@ -580,6 +626,9 @@ export class CustomersService {
   async logCustomerReminder(tenantId: string, customerId: string, userId?: string) {
     const statement = await this.getStatement(tenantId, customerId);
     const c = statement.customer;
+    if (!c.whatsappOptIn) {
+      throw new BadRequestException('Customer has opted out of WhatsApp messages');
+    }
     const text =
       statement.whatsappShareUrl
         ? decodeURIComponent(
@@ -607,6 +656,28 @@ export class CustomersService {
       },
     });
     return { text, waUrl, reminderId: log.id, outstanding: Number(c.outstandingBalance) };
+  }
+
+  async getRepairHistory(tenantId: string, customerId: string) {
+    await this.findOne(tenantId, customerId);
+    return this.prisma.repairJob.findMany({
+      where: { tenantId, customerId },
+      include: {
+        device: true,
+        technician: true,
+        linkedInvoice: { select: { id: true, invoiceNumber: true, grandTotal: true } },
+      },
+      orderBy: { receivedAt: 'desc' },
+    });
+  }
+
+  async getDevices(tenantId: string, customerId: string) {
+    await this.findOne(tenantId, customerId);
+    return this.prisma.device.findMany({
+      where: { tenantId, customerId },
+      include: { repairJobs: { select: { id: true, jobNumber: true, status: true, receivedAt: true } } },
+      orderBy: { createdAt: 'desc' },
+    });
   }
 
   async getOpenCreditInvoices(tenantId: string, customerId: string) {
@@ -685,6 +756,9 @@ export class CustomersService {
   async whatsappStatement(tenantId: string, customerId: string) {
     const stmt = await this.getStatement(tenantId, customerId);
     const c = stmt.customer;
+    if (!c.whatsappOptIn) {
+      throw new BadRequestException('Customer has opted out of WhatsApp messages');
+    }
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
     const text = `Namaste ${c.name}, your outstanding with ${tenant?.name || 'us'} is ₹${Number(c.outstandingBalance).toFixed(2)}. Statement attached / linked.`;
     const { buildReportHtml } = await import('../reports/report-html.util');

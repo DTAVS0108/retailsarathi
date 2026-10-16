@@ -181,6 +181,13 @@ export function ProductFormDialog({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const ocrInputRef = useRef<HTMLInputElement>(null);
   const nameRef = useRef<HTMLInputElement>(null);
+  const parentWrapRef = useRef<HTMLDivElement>(null);
+
+  const [parentQuery, setParentQuery] = useState('');
+  const [parentResults, setParentResults] = useState<Array<{ id: string; name: string; sku: string }>>([]);
+  const [parentSearching, setParentSearching] = useState(false);
+  const [parentOpen, setParentOpen] = useState(false);
+  const [parentSelectedLabel, setParentSelectedLabel] = useState('');
 
   useEffect(() => {
     if (!open) return;
@@ -251,6 +258,67 @@ export function ProductFormDialog({
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [open, saving, onClose]);
+
+  // Parent-product picker: resolve the current parentProductId's display name once (edit mode, or
+  // right after the detail fetch above sets it), and reset the search box whenever the dialog
+  // (re)opens for a different product.
+  useEffect(() => {
+    if (!open) {
+      setParentQuery('');
+      setParentResults([]);
+      setParentOpen(false);
+      setParentSelectedLabel('');
+      return;
+    }
+    const pid = initial?.parentProductId;
+    if (!pid) {
+      setParentSelectedLabel('');
+      return;
+    }
+    let cancelled = false;
+    void apiWithAuth<{ name: string; sku: string }>(`/products/${pid}`)
+      .then((p) => {
+        if (!cancelled) setParentSelectedLabel(`${p.name} (${p.sku})`);
+      })
+      .catch(() => {
+        /* leave label blank if the parent lookup fails — id is still saved */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, initial?.parentProductId]);
+
+  useEffect(() => {
+    const q = parentQuery.trim();
+    if (q.length < 2) {
+      setParentResults([]);
+      return;
+    }
+    const t = window.setTimeout(() => {
+      void (async () => {
+        setParentSearching(true);
+        try {
+          const res = await apiWithAuth<{ items: Array<{ id: string; name: string; sku: string }> }>(
+            `/products?search=${encodeURIComponent(q)}&pageSize=8`,
+          );
+          setParentResults((res.items ?? []).filter((p) => p.id !== initial?.id));
+        } catch {
+          setParentResults([]);
+        } finally {
+          setParentSearching(false);
+        }
+      })();
+    }, 300);
+    return () => window.clearTimeout(t);
+  }, [parentQuery, initial?.id]);
+
+  useEffect(() => {
+    function onDoc(e: MouseEvent) {
+      if (parentWrapRef.current && !parentWrapRef.current.contains(e.target as Node)) setParentOpen(false);
+    }
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, []);
 
   if (!open) return null;
 
@@ -761,15 +829,65 @@ export function ProductFormDialog({
                   onChange={(e) => patch({ variantLabel: e.target.value })}
                 />
               </label>
-              <label className="space-y-1 text-sm font-medium text-slate-700 sm:col-span-2">
-                <span>Parent product ID (optional)</span>
-                <input
-                  className={inputClassName}
-                  placeholder="Link to parent SKU for variants"
-                  value={form.parentProductId}
-                  onChange={(e) => patch({ parentProductId: e.target.value })}
-                />
-              </label>
+              <div ref={parentWrapRef} className="relative space-y-1 text-sm font-medium text-slate-700 sm:col-span-2">
+                <span>Parent product (optional, for variants)</span>
+                <div className="flex items-center gap-2">
+                  <input
+                    className={inputClassName}
+                    placeholder="Search product name or SKU…"
+                    value={parentQuery}
+                    onChange={(e) => {
+                      setParentQuery(e.target.value);
+                      setParentOpen(true);
+                      if (form.parentProductId) {
+                        patch({ parentProductId: '' });
+                        setParentSelectedLabel('');
+                      }
+                    }}
+                    onFocus={() => setParentOpen(true)}
+                  />
+                  {form.parentProductId ? (
+                    <button
+                      type="button"
+                      className="shrink-0 text-xs font-semibold text-slate-500 hover:text-slate-700"
+                      onClick={() => {
+                        patch({ parentProductId: '' });
+                        setParentSelectedLabel('');
+                        setParentQuery('');
+                      }}
+                    >
+                      Clear
+                    </button>
+                  ) : null}
+                </div>
+                {form.parentProductId && parentSelectedLabel ? (
+                  <p className="text-xs font-normal text-emerald-700">Linked to: {parentSelectedLabel}</p>
+                ) : null}
+                {parentOpen && (parentResults.length > 0 || parentSearching) ? (
+                  <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-56 overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
+                    {parentSearching ? (
+                      <p className="px-3 py-2 text-xs font-normal text-slate-400">Searching…</p>
+                    ) : (
+                      parentResults.map((p) => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          className="block w-full px-3 py-2 text-left text-sm font-normal hover:bg-slate-50"
+                          onClick={() => {
+                            patch({ parentProductId: p.id });
+                            setParentSelectedLabel(`${p.name} (${p.sku})`);
+                            setParentQuery('');
+                            setParentOpen(false);
+                          }}
+                        >
+                          <span className="font-medium text-slate-800">{p.name}</span>{' '}
+                          <span className="text-slate-400">· {p.sku}</span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                ) : null}
+              </div>
             </section>
 
             <section className="space-y-3">

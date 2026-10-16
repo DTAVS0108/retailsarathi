@@ -400,7 +400,7 @@ export class InventoryController {
     @Param('id') id: string,
     @Body()
     body: {
-      receipts: Array<{ lineId: string; quantity: number; serialNumbers?: string[] }>;
+      receipts: Array<{ lineId: string; quantity: number; serialNumbers?: string[]; batchNumber?: string; expiryDate?: string }>;
       createPurchaseBill?: boolean;
       invoiceNumber?: string;
       billAsDraft?: boolean;
